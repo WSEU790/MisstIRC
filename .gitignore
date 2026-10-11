@@ -10,5 +10,6 @@ coverage
 .env.*
 userData
 *.db
+*.tsbuildinfo
 .vscode/*
 !.vscode/extensions.json
