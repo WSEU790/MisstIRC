@@ -12,6 +12,7 @@ import { parseScript } from '../src/scripting/parser'
 import { ScriptRuntime } from '../src/scripting/runtime'
 import { ScriptManager } from '../src/scripting/manager'
 import { UNTRUSTED_POLICY, DEFAULT_SANDBOX_POLICY } from '../src/scripting/sandbox'
+import { substituteMenuPlaceholders } from '../src/shared/menu-placeholders'
 
 const FIX = join(__dirname, 'fixtures/compatibility')
 
@@ -211,6 +212,41 @@ describe('Phase 6 ScriptManager import diagnostics', () => {
     expect(echoes.some((t) => /kick\s*:\s*op kicked spammer/i.test(t))).toBe(true)
     expect(echoes.some((t) => /topic by op/i.test(t))).toBe(true)
     expect(echoes.some((t) => /nick change old to new/i.test(t))).toBe(true)
+  })
+
+  it('iif-calc fixture runs $iif and $calc without blocking', () => {
+    const echoes: string[] = []
+    const d = mkdtempSync(join(tmpdir(), 'misst-p6-iif-'))
+    dirs.push(d)
+    const m = new ScriptManager(d, {
+      echo: (_id, t) => echoes.push(t),
+      sendCommand: () => undefined
+    })
+    const rec = m.importSource('iif.mrc', load('workflow-iif-calc.mrc'))
+    expect(rec.diagnostics.hasBlockingUnsupported).toBe(false)
+    expect(rec.status).toBe('enabled')
+    expect(m.tryAlias('/checkiif')).toBe(true)
+    expect(echoes.some((t) => /iif\s*=\s*yes/i.test(t))).toBe(true)
+    expect(echoes.some((t) => /calc\s*=\s*14/i.test(t))).toBe(true)
+  })
+
+  it('nick menu fixture parses and substitutes $$1 on invoke', () => {
+    const echoes: string[] = []
+    const sent: string[] = []
+    const d = mkdtempSync(join(tmpdir(), 'misst-p6-nickmenu-'))
+    dirs.push(d)
+    const m = new ScriptManager(d, {
+      echo: (_id, t) => echoes.push(t),
+      sendCommand: (_id, line) => sent.push(line)
+    })
+    const rec = m.importSource('nickmenu.mrc', load('workflow-nick-menu.mrc'))
+    expect(rec.menus.some((menu) => menu.target === 'nick')).toBe(true)
+    const cmds = m.menuCommandsFor('nick')
+    expect(cmds.map((c) => c.label)).toEqual(expect.arrayContaining(['Greet', 'Whois nick']))
+    const greet = cmds.find((c) => c.label === 'Greet')!
+    const line = substituteMenuPlaceholders(greet.command, { nick: 'bob' })
+    expect(m.runMenuCommand(rec.id, line)).toBe(true)
+    expect(echoes.some((t) => /hello bob from menu/i.test(t))).toBe(true)
   })
 
   it('notice / connect / ignore-note fixtures stay non-blocking', () => {

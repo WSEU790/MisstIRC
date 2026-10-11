@@ -129,15 +129,15 @@ const UNSUPPORTED_IDENTS: ReadonlyArray<{ re: RegExp; code: string; construct: s
       re: /\$iif\b/i,
       code: 'ident.iif',
       construct: '$iif',
-      message: '$iif is not implemented — use if/else',
-      status: 'unsupported'
+      message: '$iif(condition,true[,false]) is supported (comparison subset)',
+      status: 'works'
     },
     {
       re: /\$calc\b/i,
       code: 'ident.calc',
       construct: '$calc',
-      message: '$calc is partial — use arithmetic expressions instead',
-      status: 'partial'
+      message: '$calc supports + - * / and parentheses (no functions)',
+      status: 'works'
     },
     {
       re: /\$regex\b/i,
@@ -400,7 +400,11 @@ export const COMPAT_CATALOG: ReadonlyArray<{
   },
   { construct: 'echo / timer', status: 'works', notes: 'Permission-gated' },
   { construct: 'msg join part nick …', status: 'works', notes: 'Requires irc.command + network.send grants' },
-  { construct: 'menu <target> { }', status: 'partial', notes: 'Parsed scaffold; no full popup engine / $menu' },
+  {
+    construct: 'menu <target> { }',
+    status: 'partial',
+    notes: 'Parsed + context menus in nicklist/channel UI; no $menu / dynamic enable exprs'
+  },
   { construct: 'halt / return', status: 'works', notes: 'Event cancellation via halt' },
   { construct: 'goto / labels', status: 'unsupported', notes: 'Use structured control flow' },
   { construct: '/dll $dll DCX MDX', status: 'unsupported', notes: 'No native plugin host' },
@@ -408,6 +412,7 @@ export const COMPAT_CATALOG: ReadonlyArray<{
   { construct: '/com* /sock* /run', status: 'unsupported', notes: 'COM, script sockets, process exec forbidden' },
   { construct: 'file / INI helpers', status: 'unsupported', notes: 'No script filesystem' },
   { construct: '.nns / nnscript.dll', status: 'unsupported', notes: 'Not loaded or redistributed' },
-  { construct: '$iif $regex $readini', status: 'unsupported', notes: 'Use if/else; regex/INI planned or out of scope' },
-  { construct: '$calc', status: 'partial', notes: 'Prefer + - * / expressions' }
+  { construct: '$iif', status: 'works', notes: 'Comparison subset + truthy tokens' },
+  { construct: '$calc', status: 'works', notes: 'Safe + - * / () only' },
+  { construct: '$regex $readini', status: 'unsupported', notes: 'Regex/INI out of scope' }
 ]

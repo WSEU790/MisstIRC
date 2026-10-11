@@ -424,7 +424,7 @@ export function CustomizePanel({ settings, onClose, onSave }: Props): React.JSX.
                 ['onDisconnect', 'Disconnect / reconnect'],
                 ['onDcc', 'DCC offers'],
                 ['onScriptError', 'Script errors'],
-                ['soundEnabled', 'Sound (reserved)']
+                ['soundEnabled', 'Play beep with desktop notifications']
               ] as const
             ).map(([key, label]) => (
               <label key={key} className="field checkbox">

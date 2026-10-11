@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import type { NickEntry } from '../../../shared/types'
 
+interface ScriptMenuItem {
+  scriptId: string
+  label: string
+  command: string
+}
+
 interface Props {
   nicks: NickEntry[]
   selfIsOp?: boolean
@@ -14,6 +20,7 @@ interface Props {
   onDeop: (nick: string) => void
   onVoice: (nick: string) => void
   onDevoice: (nick: string) => void
+  onScriptMenu?: (nick: string, item: ScriptMenuItem) => void
 }
 
 export function NickList({
@@ -28,9 +35,24 @@ export function NickList({
   onOp,
   onDeop,
   onVoice,
-  onDevoice
+  onDevoice,
+  onScriptMenu
 }: Props): React.JSX.Element {
-  const [menu, setMenu] = useState<{ nick: string; x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{
+    nick: string
+    x: number
+    y: number
+    scripts: ScriptMenuItem[]
+  } | null>(null)
+
+  async function openMenu(nick: string, x: number, y: number): Promise<void> {
+    const scripts: ScriptMenuItem[] = []
+    for (const t of ['nick', 'nicklist']) {
+      const part = await window.misstirc.listScriptMenus(t)
+      scripts.push(...part)
+    }
+    setMenu({ nick, x, y, scripts })
+  }
 
   return (
     <aside className="panel nicks">
@@ -48,7 +70,7 @@ export function NickList({
                   onClick={() => onQuery(n.nick)}
                   onContextMenu={(e) => {
                     e.preventDefault()
-                    setMenu({ nick: n.nick, x: e.clientX, y: e.clientY })
+                    void openMenu(n.nick, e.clientX, e.clientY)
                   }}
                   title="Click to PM · right-click for actions"
                 >
@@ -98,6 +120,23 @@ export function NickList({
             ) : null}
             {!selfIsOp && channel ? (
               <div className="context-hint">Moderation requires channel ops</div>
+            ) : null}
+            {menu.scripts.length > 0 ? (
+              <>
+                <div className="context-hint">Script menus</div>
+                {menu.scripts.map((item) => (
+                  <button
+                    key={`${item.scriptId}:${item.label}:${item.command}`}
+                    type="button"
+                    onClick={() => {
+                      onScriptMenu?.(menu.nick, item)
+                      setMenu(null)
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </>
             ) : null}
           </div>
         </div>

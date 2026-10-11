@@ -8,8 +8,8 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 |---------|--------|-------|
 | Electron + React + TS + Vite scaffold | Implemented and tested | |
 | Secure process boundaries | Implemented and tested | |
-| Design system / MisstIRC theme | Partially implemented | Theme editor later |
-| Main application shell | Implemented but incompletely tested | Electron UI manual |
+| Design system / MisstIRC theme | Implemented and tested | Theme editor (Phase 7); tokens + import/export |
+| Main application shell | Implemented but incompletely tested | Electron UI manual; virtualized chat (0.10) |
 | SQLite + secret store | Implemented and tested / Partially (Win creds later) | |
 | Mock IRC infrastructure | Implemented and tested | |
 
@@ -36,7 +36,8 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | CTCP VERSION/TIME/PING/ACTION + flood prefs | Implemented and tested | |
 | DCC SEND send+receive + RESUME/ACCEPT + progress/cancel/queue | Implemented and tested (local/direct) | Outbound binds localhost; **NAT not guaranteed**; never auto-exec |
 | Ignore rules | Implemented and tested | |
-| Highlights + notification engine | Implemented but incompletely tested | Main-process Notification |
+| Highlights + notification engine | Implemented but incompletely tested | Main-process Notification + optional beep |
+| Query flood guard (app-level) | Implemented and tested | 8 PMs / 10s per nick; not NNS prot modules |
 | Automation (perform, aliases, auto-away, alt nicks) | Implemented and tested | Runaway alias guard; no secret perform |
 | Moderation shortcuts (op/deop/voice/kickban) | Implemented but incompletely tested | UI + slash commands |
 | Per-network configuration | Implemented and tested | extras_json migration |
@@ -53,6 +54,7 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | Sandbox (untrusted default, grants, limits) | Implemented and tested | No DLL / unrestricted Node |
 | Command registry integration | Implemented but incompletely tested | Aliases before slash; UI Scripts panel |
 | Full mIRC / NNScript compatibility | Unsupported (drop-in) | Subset only; see Phase 6 |
+| `$iif` / `$calc` | Implemented and tested | Comparison subset; safe arithmetic |
 
 ## Phase 6 — Legacy compatibility
 
@@ -61,7 +63,7 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | mIRC-style syntax compat layer | Partially implemented | Expanded helpers/events + fixtures; still not drop-in |
 | Compat diagnostics on import | Implemented and tested | Blocking unsupported disables script |
 | Unsupported command reporting | Implemented and tested | Never silent; runtime throws |
-| Menu/popup scaffolding | Partially implemented | Parse + list API; no full popup engine |
+| Menu/popup scaffolding | Partially implemented | Parse + nicklist/channel context menus; no `$menu` / full engine |
 | NNScript workflow fixtures | Implemented and tested | Original fixtures (not `.nns` copies) |
 | COMPATIBILITY.md matrix | Implemented and tested | Tied to fixtures |
 | Drop-in `.nns` / DLL host | Unsupported | License + security |

@@ -14,5 +14,7 @@ Original MisstIRC examples for Phase 6 tests. **Not** copied from NNScript `.nns
 | `workflow-notice-echo.mrc` | NOTICE events | works |
 | `workflow-connect-banner.mrc` | CONNECT/DISCONNECT | works |
 | `workflow-ignore-note.mrc` | App `/ignore` guidance (not NNS prot) | works (alias) |
+| `workflow-iif-calc.mrc` | `$iif` / `$calc` helpers | works |
+| `workflow-nick-menu.mrc` | Nick popup + `$$1` substitution | partial |
 
 Each fixture is exercised in `tests/phase6-compatibility.test.ts`.

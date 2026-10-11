@@ -221,6 +221,16 @@ function registerIpc(): void {
 
   ipcMain.handle('misstirc:listScriptMenus', (_e, target?: string) => manager.listScriptMenus(target))
 
+  ipcMain.handle(
+    'misstirc:runScriptMenuCommand',
+    (
+      _e,
+      scriptId: string,
+      command: string,
+      ctx?: { nick?: string; chan?: string; connectionId?: string }
+    ): boolean => manager.runScriptMenuCommand(scriptId, command, ctx)
+  )
+
   ipcMain.handle('misstirc:disableScript', (_e, id: string): void => {
     scripts.disable(id)
     emitScripts()

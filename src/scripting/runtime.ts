@@ -6,6 +6,7 @@ import type {
   ScriptFile,
   Statement
 } from './ast'
+import { safeCalc } from '../shared/safe-calc'
 import { UNSUPPORTED_COMMANDS } from './compat'
 import {
   assertPermission,
@@ -435,6 +436,24 @@ export class ScriptRuntime {
     budget: InstructionBudget,
     ctx: EventContext
   ): string {
+    if (callee === '$iif') {
+      const parts = splitCallArgs(argsSrc)
+      const condSrc = (parts[0] ?? '').trim()
+      const truthyBranch = (parts[1] ?? '').trim()
+      const falsyBranch = (parts[2] ?? '').trim()
+      const ok = this.evalConditionSource(condSrc, locals, budget, ctx)
+      const chosen = ok ? truthyBranch : falsyBranch
+      return this.expandRaw(chosen, locals, budget, ctx)
+    }
+    if (callee === '$calc') {
+      const expanded = this.expandRaw(argsSrc, locals, budget, ctx)
+      try {
+        return String(safeCalc(expanded))
+      } catch (err) {
+        this.errors.push(err instanceof Error ? err.message : String(err))
+        return '0'
+      }
+    }
     const args = splitCallArgs(argsSrc).map((a) => {
       const trimmed = a.trim()
       if (/^%[A-Za-z0-9_.]+$/.test(trimmed)) {
@@ -451,6 +470,49 @@ export class ScriptRuntime {
     })
     const value = this.evalExpr({ type: 'CallExpr', callee, args }, locals, budget, ctx)
     return value === null || value === undefined ? '' : String(value)
+  }
+
+  /** Evaluate `$iif` condition text (`%n == alice`, `$true`, numbers, expanded tokens). */
+  private evalConditionSource(
+    src: string,
+    locals: Map<string, ScriptValue>,
+    budget: InstructionBudget,
+    ctx: EventContext
+  ): boolean {
+    const trimmed = src.trim()
+    if (!trimmed) return false
+    const ops = ['==', '!=', '<=', '>=', '<', '>', 'isin'] as const
+    for (const op of ops) {
+      const idx = trimmed.toLowerCase().indexOf(op === 'isin' ? ' isin ' : op)
+      if (idx === -1) continue
+      const leftSrc =
+        op === 'isin' ? trimmed.slice(0, idx).trim() : trimmed.slice(0, idx).trim()
+      const rightSrc =
+        op === 'isin'
+          ? trimmed.slice(idx + ' isin '.length).trim()
+          : trimmed.slice(idx + op.length).trim()
+      const left = this.expandRaw(leftSrc, locals, budget, ctx)
+      const right = this.expandRaw(rightSrc, locals, budget, ctx)
+      switch (op) {
+        case '==':
+          return left === right
+        case '!=':
+          return left !== right
+        case '<':
+          return Number(left) < Number(right)
+        case '>':
+          return Number(left) > Number(right)
+        case '<=':
+          return Number(left) <= Number(right)
+        case '>=':
+          return Number(left) >= Number(right)
+        case 'isin':
+          return right.toLowerCase().includes(left.toLowerCase())
+      }
+    }
+    const expanded = this.expandRaw(trimmed, locals, budget, ctx)
+    if (expanded === '' || expanded === '0' || expanded.toLowerCase() === 'false') return false
+    return truthy(expanded)
   }
 
   private evalExpr(
@@ -554,6 +616,20 @@ export class ScriptRuntime {
           case '$asctime': {
             const ts = expr.args[0] !== undefined ? argN(0) : Math.floor(Date.now() / 1000)
             return new Date(ts * 1000).toISOString()
+          }
+          case '$iif': {
+            const cond = truthy(this.evalExpr(expr.args[0] ?? { type: 'NumberExpr', value: 0 }, locals, budget, ctx))
+            const pick = cond ? expr.args[1] : expr.args[2]
+            if (!pick) return ''
+            return this.evalExpr(pick, locals, budget, ctx)
+          }
+          case '$calc': {
+            try {
+              return safeCalc(arg(0))
+            } catch (err) {
+              this.errors.push(err instanceof Error ? err.message : String(err))
+              return 0
+            }
           }
           default:
             return this.ident(expr.callee, ctx)

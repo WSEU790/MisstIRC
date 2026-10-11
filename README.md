@@ -3,7 +3,7 @@
 Professional Windows-first IRC client built with **Electron**, **React**, **TypeScript**, and **Vite**. Real TCP/TLS IRC networking, multi-connection support, CAP/SASL registration, and a classic channel/PM shell.
 
 > Brand: **MisstIRC** — original assets only.  
-> Phases 1–8 + **0.8.0**: DCC SEND receive (local/direct; NAT not guaranteed), scripting subset, packaging prep. Signed Windows installer still gated on smoke checklist.
+> Phases 1–8 + **0.10.0**: DCC send/receive (local/direct), script context menus, virtualized chat, `$iif`/`$calc`, query flood guard. Signed Windows installer still gated on smoke checklist.
 
 ## Requirements
 

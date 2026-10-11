@@ -44,6 +44,8 @@ const api: MisstIrcApi = {
   setScriptPermissions: (id: string, permissions: ScriptPermissionName[]) =>
     ipcRenderer.invoke('misstirc:setScriptPermissions', id, permissions),
   listScriptMenus: (target?: string) => ipcRenderer.invoke('misstirc:listScriptMenus', target),
+  runScriptMenuCommand: (scriptId, command, ctx) =>
+    ipcRenderer.invoke('misstirc:runScriptMenuCommand', scriptId, command, ctx),
   getSettings: () => ipcRenderer.invoke('misstirc:getSettings'),
   saveSettings: (settings: AppSettings) => ipcRenderer.invoke('misstirc:saveSettings', settings),
   exportConfig: () => ipcRenderer.invoke('misstirc:exportConfig'),

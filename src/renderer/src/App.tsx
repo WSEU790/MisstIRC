@@ -27,6 +27,7 @@ import { SearchPanel } from './components/SearchPanel'
 import { ServerManager } from './components/ServerManager'
 import { StatusBar } from './components/StatusBar'
 import { Toolbar } from './components/Toolbar'
+import { playNotifyBeep } from './lib/notify-sound'
 
 const emptyState: AppStateSnapshot = {
   connections: [],
@@ -106,6 +107,9 @@ export function App(): React.JSX.Element {
       }
       if (event.type === 'notify') {
         setError(`Notify: ${event.payload.title} — ${event.payload.body}`)
+        if (settingsRef.current.notifications?.soundEnabled) {
+          playNotifyBeep()
+        }
       }
     })
 
@@ -308,8 +312,21 @@ export function App(): React.JSX.Element {
             nicks={(activeBuffer?.nicks ?? []).map((n) => n.nick)}
             connectionId={active.connectionId}
             buffer={active.name}
+            bufferKind={
+              activeBuffer?.type === 'channel'
+                ? 'channel'
+                : activeBuffer?.type === 'query'
+                  ? 'query'
+                  : 'status'
+            }
             onSend={(t) => void handleSend(t)}
             onTopic={(t) => void handleSend(`/topic ${t}`)}
+            onScriptMenu={(item) => {
+              void window.misstirc.runScriptMenuCommand(item.scriptId, item.command, {
+                connectionId: active.connectionId,
+                chan: activeBuffer?.type === 'channel' ? activeBuffer.name : undefined
+              })
+            }}
             disabled={
               activeConnection.state !== 'connected' && activeConnection.state !== 'registering'
             }
@@ -342,6 +359,13 @@ export function App(): React.JSX.Element {
             onDeop={(n) => void handleSend(`/deop ${n}`)}
             onVoice={(n) => void handleSend(`/voice ${n}`)}
             onDevoice={(n) => void handleSend(`/devoice ${n}`)}
+            onScriptMenu={(nick, item) => {
+              void window.misstirc.runScriptMenuCommand(item.scriptId, item.command, {
+                connectionId: active?.connectionId,
+                nick,
+                chan: activeBuffer?.type === 'channel' ? activeBuffer.name : undefined
+              })
+            }}
           />
         ) : null}
       </div>

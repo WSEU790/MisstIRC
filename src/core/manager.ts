@@ -17,8 +17,10 @@ import type {
   WhoisInfo
 } from '@shared/types'
 import { defaultAppSettings } from '../shared/defaults'
-import { MESSAGE_INDEX_MAX } from '../shared/limits'
+import { MESSAGE_INDEX_MAX, QUERY_FLOOD_MAX, QUERY_FLOOD_WINDOW_MS } from '../shared/limits'
+import { substituteMenuPlaceholders } from '../shared/menu-placeholders'
 import { mergeNotificationPrefs, shouldNotify, type NotifyKind } from '../shared/notifications'
+import { acceptQueryMessage } from '../shared/query-flood'
 import { DCC_LIMITATIONS, DccManager } from '../dcc'
 import type { ScriptManager } from '../scripting'
 import { parseSearchQuery, type ChatLogger } from '../services/logging'
@@ -59,6 +61,10 @@ export class ConnectionManager extends EventEmitter {
   private scripts: ScriptManager | null = null
   /** Connection used when scripts issue /commands */
   private scriptTargetConnectionId: string | null = null
+  /** Per-connection:nick PM timestamps for query flood guard */
+  private queryFloodBuckets = new Map<string, number[]>()
+  /** Nicks we already announced as flooded in the current window */
+  private queryFloodAnnounced = new Set<string>()
   activeBufferKey: string | null = null
   settings: AppSettings = defaultAppSettings()
 
@@ -96,6 +102,31 @@ export class ConnectionManager extends EventEmitter {
     const out: { scriptId: string; label: string; command: string }[] = []
     for (const t of targets) out.push(...this.scripts.menuCommandsFor(t))
     return out
+  }
+
+  /**
+   * Invoke a script popup command with $$1/$nick/$chan substitution.
+   * Returns false when the script is missing or disabled.
+   */
+  runScriptMenuCommand(
+    scriptId: string,
+    command: string,
+    ctx?: { nick?: string; chan?: string; connectionId?: string }
+  ): boolean {
+    if (!this.scripts) return false
+    if (ctx?.connectionId) this.scriptTargetConnectionId = ctx.connectionId
+    const conn = ctx?.connectionId
+      ? this.connections.get(ctx.connectionId)
+      : this.scriptTargetConnectionId
+        ? this.connections.get(this.scriptTargetConnectionId)
+        : undefined
+    const line = substituteMenuPlaceholders(command, {
+      nick: ctx?.nick,
+      chan: ctx?.chan,
+      me: conn?.nick,
+      network: conn?.network.name
+    })
+    return this.scripts.runMenuCommand(scriptId, line)
   }
 
   getSnapshot(): AppStateSnapshot {
@@ -771,8 +802,34 @@ export class ConnectionManager extends EventEmitter {
         // Drop from UI/notifications but keep optional system note only when logging disabled path
         return
       }
+      const isPm =
+        (view.kind === 'privmsg' || view.kind === 'highlight') &&
+        !view.target.startsWith('#') &&
+        !view.target.startsWith('&')
+      if (isPm && view.nick) {
+        const floodKey = `${conn.id}:${view.nick.toLowerCase()}`
+        const { accept, flooded } = acceptQueryMessage(this.queryFloodBuckets, floodKey, Date.now(), {
+          maxPerWindow: QUERY_FLOOD_MAX,
+          windowMs: QUERY_FLOOD_WINDOW_MS
+        })
+        if (!accept) {
+          if (flooded && !this.queryFloodAnnounced.has(floodKey)) {
+            this.queryFloodAnnounced.add(floodKey)
+            this.emitMessage({
+              id: `${conn.id}-${++this.messageSeq}`,
+              connectionId: conn.id,
+              target: view.target,
+              kind: 'system',
+              text: `Query flood from ${view.nick} — further PMs suppressed for ${QUERY_FLOOD_WINDOW_MS / 1000}s`,
+              timestamp: Date.now()
+            })
+            // Clear announce after window so a later burst can notify again
+            setTimeout(() => this.queryFloodAnnounced.delete(floodKey), QUERY_FLOOD_WINDOW_MS)
+          }
+          return
+        }
+      }
       this.emitMessage(view)
-      const isPm = view.kind === 'privmsg' && !view.target.startsWith('#') && !view.target.startsWith('&')
       const kind: NotifyKind = view.highlighted ? 'highlight' : isPm ? 'private' : 'other'
       if ((view.highlighted || isPm) && this.allowNotify(kind, view.connectionId, view.target)) {
         this.emit('notify', {

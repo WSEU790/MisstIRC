@@ -47,17 +47,18 @@ Full matrix: Project Context `docs/reference-matrix.md`.
 | `var` / `inc` / `dec` | works | `%vars` | Phase 5 tests |
 | `$nick` `$chan` `$me` `$network` `$1` `$1-` `$*` | partial | Common idents only | Phase 5–6 |
 | `$upper` `$lower` `$len` `$left` `$right` `$mid` `$replace` `$pos` `$ctime` `$asctime` | works | Safe string/time helpers | `workflow-string-helpers.mrc` |
+| `$iif` | works | Comparison subset + truthy tokens | `workflow-iif-calc.mrc` |
+| `$calc` | works | Safe `+ - * / ()` only | `workflow-iif-calc.mrc` |
 | `echo` / `timer` | works | Permission-gated | Phase 5 |
 | IRC slash (`msg`/`join`/…) | works | Requires grants | Phase 5 |
 | `halt` / `return` | works | Event cancel via `halt` | Phase 5 |
-| `menu <target> { }` | partial | Parsed scaffold + menu API; not full popup engine | `workflow-channel-menu.mrc` |
+| `menu <target> { }` | partial | Parsed + context menus in UI; no `$menu` | `workflow-channel-menu.mrc`, `workflow-nick-menu.mrc` |
 | `goto` / labels | unsupported | Reported on import | compat scanner |
 | `/dll` `$dll` DCX/MDX | unsupported | Blocking diagnostics; runtime error if forced | `workflow-unsupported-dll.mrc` |
 | `/dialog` `/window` `/draw*` | unsupported | Reported; not silent | compat catalog |
 | `/com*` `/sock*` `/run` | unsupported | Forbidden | compat catalog |
 | File / INI helpers | unsupported | No script filesystem | compat catalog |
-| `$iif` `$regex` `$readini` | unsupported | Use `if`/else | compat catalog |
-| `$calc` | partial | Prefer arithmetic exprs | catalog |
+| `$regex` `$readini` | unsupported | Out of scope | compat catalog |
 | `.nns` / `nnscript.dll` | unsupported | Not loaded | scanner + dll fixture |
 
 Untrusted imports are echo-only until the user grants capabilities. Blocking unsupported features leave the script **disabled** until reviewed (`force enable` in UI).
@@ -70,7 +71,7 @@ These map **workflows**, not proprietary script code.
 |----------|----------------------|----------|--------|----------|
 | Connect / register | mIRC UI + NickServ scripts | TCP/TLS, CAP, SASL; password field | partial | IRC integration tests |
 | Channel greeter / TEXT events | events.nns-style handlers | `on *:TEXT:…` subset | works | `workflow-greeter.mrc` |
-| Channel popups | popups.nns / popups.ini | `menu channel { }` scaffold | partial | `workflow-channel-menu.mrc` |
+| Channel / nick popups | popups.nns / popups.ini | Context menus + `$$1` substitution | partial | `workflow-channel-menu.mrc`, `workflow-nick-menu.mrc` |
 | Away system | awaysys.nns + toolbar | `/away` client + echo helper fixture | partial | `workflow-away-echo.mrc` |
 | NickServ UX | 4.21 NickServ improvements | Prefer SASL/password — no secrets in scripts | partial | `workflow-nickserv-note.mrc` |
 | Protections / flood | script modules | Planned (app-level ignore exists) | unsupported* | *as NNS modules |
@@ -96,7 +97,8 @@ Unsupported script commands throw at runtime with a clear error — they are **n
 
 - `menu channel|nick|query|status|menubar|nicklist { … }` is parsed into a tree (commands, separators, dotted submenus).  
 - Enabled scripts expose items via `listScriptMenus` / Scripts panel metadata.  
-- **Not claimed:** full mIRC popup evaluation, `$menu`, dynamic enable expressions, or DLL-drawn UI.
+- **UI (0.10):** right-click nicklist → `nick`/`nicklist` menus; right-click conversation header → `channel`/`query`/`status`; invoke via `runScriptMenuCommand` with `$$1`/`$nick`/`$chan` substitution.  
+- **Not claimed:** full mIRC popup evaluation, `$menu`, dynamic enable expressions, nested submenu UI, or DLL-drawn UI.
 
 ## Manual verification (optional)
 

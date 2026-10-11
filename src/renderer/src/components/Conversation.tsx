@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { IrcMessageView } from '../../../shared/types'
+import { MESSAGE_ROW_HEIGHT } from '../../../shared/limits'
 import { FormattedText } from './FormattedText'
+import { computeVirtualWindow } from '../../../shared/virtual-window'
+
+interface ScriptMenuItem {
+  scriptId: string
+  label: string
+  command: string
+}
 
 interface Props {
   title: string
@@ -10,8 +18,10 @@ interface Props {
   nicks: string[]
   connectionId: string
   buffer: string
+  bufferKind: 'channel' | 'query' | 'status'
   onSend: (text: string) => void
   onTopic?: (topic: string) => void
+  onScriptMenu?: (item: ScriptMenuItem) => void
   disabled?: boolean
 }
 
@@ -31,8 +41,10 @@ export function Conversation({
   nicks,
   connectionId,
   buffer,
+  bufferKind,
   onSend,
   onTopic,
+  onScriptMenu,
   disabled
 }: Props): React.JSX.Element {
   const [text, setText] = useState('')
@@ -42,11 +54,28 @@ export function Conversation({
   const [compIdx, setCompIdx] = useState(0)
   const [compPrefix, setCompPrefix] = useState('')
   const [compStart, setCompStart] = useState(0)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const [scriptMenus, setScriptMenus] = useState<ScriptMenuItem[]>([])
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportH, setViewportH] = useState(400)
+  const listRef = useRef<HTMLDivElement>(null)
+  const stickBottom = useRef(true)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = listRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setViewportH(el.clientHeight))
+    ro.observe(el)
+    setViewportH(el.clientHeight)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const el = listRef.current
+    if (!el || !stickBottom.current) return
+    el.scrollTop = el.scrollHeight
+    setScrollTop(el.scrollTop)
   }, [messages.length])
 
   function submit(): void {
@@ -88,7 +117,6 @@ export function Conversation({
     const idx = list.length ? compIdx % list.length : 0
     const pick = list[idx]!
     const suffix = start === 0 ? ': ' : ' '
-    // Replace from original prefix start through current caret/word end
     const afterCaret = text.slice(caret).replace(/^\S+\s?/, '')
     const next = text.slice(0, start) + pick + suffix + afterCaret
     setText(next)
@@ -132,14 +160,34 @@ export function Conversation({
     }
   }
 
+  async function openBufferMenu(e: React.MouseEvent): Promise<void> {
+    e.preventDefault()
+    const targets =
+      bufferKind === 'channel'
+        ? ['channel']
+        : bufferKind === 'query'
+          ? ['query']
+          : ['status']
+    const items: ScriptMenuItem[] = []
+    for (const t of targets) {
+      const part = await window.misstirc.listScriptMenus(t)
+      items.push(...part)
+    }
+    setScriptMenus(items)
+    setCtxMenu({ x: e.clientX, y: e.clientY })
+  }
+
+  const win = computeVirtualWindow(scrollTop, viewportH, messages.length, MESSAGE_ROW_HEIGHT)
+  const slice = messages.slice(win.start, win.end)
+
   return (
     <section className="conversation">
-      <div className="buffer-header">
+      <div className="buffer-header" onContextMenu={(e) => void openBufferMenu(e)}>
         <h1>{title}</h1>
         {topic !== undefined ? (
           <div
             className="topic"
-            title="Double-click to set topic"
+            title="Double-click to set topic · right-click for script menus"
             onDoubleClick={() => {
               if (!onTopic) return
               const next = window.prompt('Set topic', topic)
@@ -148,35 +196,58 @@ export function Conversation({
           >
             <FormattedText text={topic || '(no topic)'} />
           </div>
-        ) : null}
+        ) : (
+          <div className="topic" style={{ color: 'var(--text-dim)' }}>
+            Right-click header for script menus
+          </div>
+        )}
       </div>
-      <div className="messages" role="log" aria-live="polite">
+      <div
+        className="messages"
+        role="log"
+        aria-live="polite"
+        ref={listRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          setScrollTop(el.scrollTop)
+          stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < MESSAGE_ROW_HEIGHT * 2
+        }}
+      >
         {messages.length === 0 ? (
           <div style={{ color: 'var(--text-dim)' }}>No messages yet. Try /join #channel</div>
         ) : (
-          messages.map((m) => (
-            <div key={m.id} className={`msg ${m.kind}`}>
-              <span className="time">{formatTime(m.timestamp)}</span>
-              <span className={`nick${m.nick === nick ? '' : ' other'}`}>
-                {m.kind === 'privmsg' || m.kind === 'notice' ? m.nick ?? '' : '—'}
-              </span>
-              <span className="body">
-                {m.kind === 'notice' ? (
-                  <>
-                    -{m.nick}- <FormattedText text={m.text} />
-                  </>
-                ) : m.kind === 'privmsg' && m.text.startsWith('\x01ACTION ') ? (
-                  <>
-                    * {m.nick} <FormattedText text={m.text} />
-                  </>
-                ) : (
-                  <FormattedText text={m.text} />
-                )}
-              </span>
+          <div className="msg-virtual" style={{ height: win.totalHeight, position: 'relative' }}>
+            <div style={{ transform: `translateY(${win.offsetTop}px)` }}>
+              {slice.map((m) => (
+                <div
+                  key={m.id}
+                  className={`msg ${m.kind}`}
+                  style={{ height: MESSAGE_ROW_HEIGHT, minHeight: MESSAGE_ROW_HEIGHT }}
+                >
+                  <span className="time">{formatTime(m.timestamp)}</span>
+                  <span className={`nick${m.nick === nick ? '' : ' other'}`}>
+                    {m.kind === 'privmsg' || m.kind === 'notice' || m.kind === 'highlight'
+                      ? m.nick ?? ''
+                      : '—'}
+                  </span>
+                  <span className="body">
+                    {m.kind === 'notice' ? (
+                      <>
+                        -{m.nick}- <FormattedText text={m.text} />
+                      </>
+                    ) : m.kind === 'privmsg' && m.text.startsWith('\x01ACTION ') ? (
+                      <>
+                        * {m.nick} <FormattedText text={m.text} />
+                      </>
+                    ) : (
+                      <FormattedText text={m.text} />
+                    )}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))
+          </div>
         )}
-        <div ref={bottomRef} />
       </div>
       <div className="composer">
         <input
@@ -193,6 +264,33 @@ export function Conversation({
           Send
         </button>
       </div>
+
+      {ctxMenu ? (
+        <div
+          className="context-backdrop"
+          onClick={() => setCtxMenu(null)}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <div className="context-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} role="menu">
+            {scriptMenus.length === 0 ? (
+              <div className="context-hint">No script menus for {bufferKind}</div>
+            ) : (
+              scriptMenus.map((item) => (
+                <button
+                  key={`${item.scriptId}:${item.label}:${item.command}`}
+                  type="button"
+                  onClick={() => {
+                    onScriptMenu?.(item)
+                    setCtxMenu(null)
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

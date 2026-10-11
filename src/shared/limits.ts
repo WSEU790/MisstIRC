@@ -17,3 +17,12 @@ export const IRC_LINE_MAX = 512
 
 /** Default CTCP flood replies per 10s window */
 export const CTCP_FLOOD_DEFAULT = 5
+
+/** Max private messages from one nick per QUERY_FLOOD_WINDOW_MS before drop */
+export const QUERY_FLOOD_MAX = 8
+
+/** Query flood window length (ms) */
+export const QUERY_FLOOD_WINDOW_MS = 10_000
+
+/** Approximate row height (px) for virtualized conversation rendering */
+export const MESSAGE_ROW_HEIGHT = 24

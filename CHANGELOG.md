@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.0 — Popups in UI, virtual chat, sound, $iif/$calc, query flood
+
+### Added
+
+- **Script context menus** wired into nicklist (`nick`/`nicklist`) and conversation header (`channel`/`query`/`status`); `$$1`/`$nick`/`$chan` substitution on invoke via `runScriptMenuCommand`
+- **Virtualized conversation** rendering (windowed rows) for large transcripts
+- **Notification beep** when Customize → sound is enabled
+- **`$iif`** and **`$calc`** scripting helpers (safe arithmetic; comparison subset)
+- **Query flood guard** — drops excess PMs from one nick (8 / 10s) with a system notice
+- Fixtures: `workflow-iif-calc.mrc`, `workflow-nick-menu.mrc`
+
+### Limits (honest)
+
+- Popup engine still lacks `$menu` / dynamic enable expressions / full submenu UI nesting
+- Virtual rows use fixed height (long wraps ellipsis)
+- Signed Windows installer still blocked
+
 ## 0.9.0 — Outbound DCC, search/ignore polish, more fixtures
 
 ### Added

@@ -308,12 +308,24 @@ textarea {
   line-height: 1.45;
 }
 
+.msg-virtual {
+  width: 100%;
+}
+
 .msg {
   display: grid;
   grid-template-columns: 64px 110px 1fr;
   gap: 8px;
   padding: 2px 0;
   animation: msg-in 160ms ease-out;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.msg-virtual .msg .body {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 @keyframes msg-in {

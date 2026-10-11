@@ -318,6 +318,11 @@ export interface MisstIrcApi {
   enableScript: (id: string, force?: boolean) => Promise<void>
   disableScript: (id: string) => Promise<void>
   listScriptMenus: (target?: string) => Promise<{ scriptId: string; label: string; command: string }[]>
+  runScriptMenuCommand: (
+    scriptId: string,
+    command: string,
+    ctx?: { nick?: string; chan?: string; connectionId?: string }
+  ) => Promise<boolean>
   reloadScript: (id: string) => Promise<ScriptRecordView | null>
   unloadScript: (id: string) => Promise<void>
   setScriptPermissions: (id: string, permissions: ScriptPermissionName[]) => Promise<void>
