@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0 — Phase 5 scripting foundation
+
+### Added
+
+- Structured AST lexer/parser for a mIRC-style subset (aliases, `on`/`raw`, if/while/var/halt/return)
+- Sandboxed runtime: variables, expressions, event dispatch, timers, permission-gated commands
+- `ScriptManager`: import / enable / disable / reload / unload with parse and execution errors
+- Untrusted-by-default sandbox + capability grants; instruction / recursion / while / timer limits
+- Scripts panel in the UI; script aliases consulted before built-in slash commands
+- Vitest coverage for lexer/parser/runtime/manager/integration
+
+### Not claimed
+
+- Full mIRC or NNScript drop-in compatibility
+- DLL / COM / dialog / unrestricted filesystem or network from scripts
+- Windows installer
+
 ## 0.3.0 — Phase 4 advanced IRC
 
 ### Added

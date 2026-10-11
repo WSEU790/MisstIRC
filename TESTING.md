@@ -33,6 +33,6 @@ Mock server: `src/mock-irc/server.ts` (TCP, CAP, optional SASL, channel echo).
 4. Nick list shows `@`/`+`; right-click Whois/Query; Kick/Ban only when op.
 5. Tab completes nicks; Up/Down recalls input history; unread badges clear on focus.
 6. Search finds prior messages; password/SASL lines never appear in log files.
-7. Status bar still lists unfinished: scripting, DCC, installer.
+7. Status bar lists unfinished: full mIRC/NNScript compat, DCC transfers, installer. Scripts panel imports under sandbox.
 
 Document any manual-only checks in `FEATURE_STATUS.md` as “Implemented but incompletely tested”.

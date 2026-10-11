@@ -11,6 +11,7 @@ import { Conversation } from './components/Conversation'
 import { DccPanel } from './components/DccPanel'
 import { NavTree } from './components/NavTree'
 import { NickList } from './components/NickList'
+import { ScriptsPanel } from './components/ScriptsPanel'
 import { SearchPanel } from './components/SearchPanel'
 import { ServerManager } from './components/ServerManager'
 import { StatusBar } from './components/StatusBar'
@@ -27,7 +28,8 @@ const emptyState: AppStateSnapshot = {
     notificationsEnabled: true
   },
   unfinished: [],
-  dccOffers: []
+  dccOffers: [],
+  scripts: []
 }
 
 function parseBufferKey(key: string | null): { connectionId: string; name: string } | null {
@@ -44,6 +46,7 @@ export function App(): React.JSX.Element {
   const [showChannels, setShowChannels] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [showDcc, setShowDcc] = useState(false)
+  const [showScripts, setShowScripts] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [whois, setWhois] = useState<WhoisInfo | null>(null)
   const [networks, setNetworks] = useState<NetworkConfig[]>([])
@@ -79,6 +82,9 @@ export function App(): React.JSX.Element {
             const rest = prev.dccOffers.filter((o) => o.id !== event.payload.id)
             return { ...prev, dccOffers: [event.payload, ...rest] }
           })
+        }
+        if (event.type === 'scripts') {
+          setState((prev) => ({ ...prev, scripts: event.payload }))
         }
         if (event.type === 'notify') {
           /* OS notification also raised from main; keep a light in-app hint */
@@ -151,10 +157,12 @@ export function App(): React.JSX.Element {
         onChannels={() => setShowChannels(true)}
         onSearch={() => setShowSearch(true)}
         onDcc={() => setShowDcc(true)}
+        onScripts={() => setShowScripts(true)}
         onDisconnect={() => void handleDisconnect()}
         canDisconnect={Boolean(activeConnection)}
         canChannels={Boolean(activeConnection && activeConnection.state === 'connected')}
         dccCount={state.dccOffers.filter((o) => o.status === 'pending').length}
+        scriptCount={state.scripts.filter((s) => s.enabled).length}
       />
 
       {error ? (
@@ -291,6 +299,31 @@ export function App(): React.JSX.Element {
           offers={state.dccOffers}
           onClose={() => setShowDcc(false)}
           onRespond={(id, accept) => void window.misstirc.respondDcc(id, accept)}
+        />
+      ) : null}
+
+      {showScripts ? (
+        <ScriptsPanel
+          scripts={state.scripts}
+          onClose={() => setShowScripts(false)}
+          onImport={async (name, source, trusted) => {
+            await window.misstirc.importScript(name, source, { trusted })
+          }}
+          onEnable={async (id) => {
+            await window.misstirc.enableScript(id)
+          }}
+          onDisable={async (id) => {
+            await window.misstirc.disableScript(id)
+          }}
+          onReload={async (id) => {
+            await window.misstirc.reloadScript(id)
+          }}
+          onUnload={async (id) => {
+            await window.misstirc.unloadScript(id)
+          }}
+          onPermissions={async (id, permissions) => {
+            await window.misstirc.setScriptPermissions(id, permissions)
+          }}
         />
       ) : null}
     </div>

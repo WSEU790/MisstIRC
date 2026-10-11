@@ -1,33 +1,33 @@
 /**
- * Scripting subsystem scaffold (Phase 5–6).
- * Full mIRC / NNScript runtime is NOT implemented.
- * Any future import path must enforce permissions and execution limits.
+ * MisstIRC scripting foundation (Phase 5).
+ * Structured AST lexer/parser + sandboxed runtime — not string-eval.
+ * Untrusted by default; no unrestricted Node/fs/net; DLL calls forbidden.
+ * Full mIRC / NNScript drop-in compatibility is NOT claimed.
  */
 
-export type ScriptPermission =
-  | 'network.send'
-  | 'filesystem.read'
-  | 'filesystem.write'
-  | 'ui.dialog'
-  | 'process.exec'
-
-export interface ScriptSandboxPolicy {
-  /** Deny-by-default permission set */
-  allowed: ScriptPermission[]
-  maxInstructionsPerTick: number
-  maxTimers: number
-  allowDllCalls: false
-}
-
-export const DEFAULT_SANDBOX_POLICY: ScriptSandboxPolicy = {
-  allowed: [],
-  maxInstructionsPerTick: 10_000,
-  maxTimers: 32,
-  allowDllCalls: false
-}
-
-export function assertScriptingUnavailable(feature: string): never {
-  throw new Error(
-    `MisstIRC scripting: "${feature}" is not implemented. Sandbox policy is defined but no runtime is loaded.`
-  )
-}
+export type { ParseError, ScriptFile } from './ast'
+export { lex } from './lexer'
+export { parseScript, type ParseResult } from './parser'
+export {
+  DEFAULT_SANDBOX_POLICY,
+  UNTRUSTED_POLICY,
+  InstructionBudget,
+  assertPermission,
+  grantCapabilities,
+  type ScriptPermission,
+  type ScriptSandboxPolicy
+} from './sandbox'
+export {
+  ScriptRuntime,
+  type EventContext,
+  type ScriptHost,
+  type ScriptValue,
+  type RuntimeOptions
+} from './runtime'
+export { TimerTable } from './timers'
+export {
+  ScriptManager,
+  type ScriptManagerHost,
+  type ScriptRecord,
+  type ScriptStatus
+} from './manager'

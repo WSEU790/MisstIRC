@@ -9,10 +9,12 @@ import type {
   IrcMessageView,
   LogSearchHit,
   NetworkConfig,
+  ScriptRecordView,
   UnfinishedFeature,
   WhoisInfo
 } from '@shared/types'
 import { DCC_LIMITATIONS, DccManager } from '../dcc'
+import type { ScriptManager } from '../scripting'
 import type { ChatLogger } from '../services/logging'
 import { expandAlias } from './aliases'
 import { IrcConnection } from './connection'
@@ -26,7 +28,8 @@ const UNFINISHED: UnfinishedFeature[] = [
   {
     id: 'mirc-scripting',
     label: 'mIRC / NNScript scripting',
-    detail: 'Sandbox scaffold only — full script runtime not implemented.'
+    detail:
+      'Phase 5 foundation: AST parser + sandboxed runtime. Not full mIRC/NNScript compatibility; DLLs unsupported.'
   },
   {
     id: 'dcc',
@@ -47,6 +50,9 @@ export class ConnectionManager extends EventEmitter {
   private messageIndex: IrcMessageView[] = []
   private logger: ChatLogger | null = null
   private readonly dcc = new DccManager()
+  private scripts: ScriptManager | null = null
+  /** Connection used when scripts issue /commands */
+  private scriptTargetConnectionId: string | null = null
   activeBufferKey: string | null = null
   settings: AppSettings = {
     theme: 'misstirc-dark',
@@ -60,13 +66,22 @@ export class ConnectionManager extends EventEmitter {
     this.logger = logger
   }
 
+  setScriptManager(scripts: ScriptManager | null): void {
+    this.scripts = scripts
+  }
+
+  listScripts(): ScriptRecordView[] {
+    return (this.scripts?.list() ?? []).map(toScriptView)
+  }
+
   getSnapshot(): AppStateSnapshot {
     return {
       connections: [...this.connections.values()].map((c) => this.toSnapshot(c)),
       activeBufferKey: this.activeBufferKey,
       settings: this.settings,
       unfinished: UNFINISHED,
-      dccOffers: this.dcc.list()
+      dccOffers: this.dcc.list(),
+      scripts: this.listScripts()
     }
   }
 
@@ -138,8 +153,15 @@ export class ConnectionManager extends EventEmitter {
 
   sendInput(connectionId: string, buffer: string, text: string): void {
     const conn = this.require(connectionId)
+    this.scriptTargetConnectionId = connectionId
     let trimmed = text.trimEnd()
     if (!trimmed) return
+
+    // Script aliases run before network aliases / built-ins
+    if (trimmed.startsWith('/') && this.scripts?.tryAlias(trimmed)) {
+      this.emitState()
+      return
+    }
 
     if (trimmed.startsWith('/')) {
       try {
@@ -453,12 +475,89 @@ export class ConnectionManager extends EventEmitter {
     }
   }
 
+  /** Host callbacks for ScriptManager — echo + gated command send. */
+  scriptEcho(_scriptId: string, text: string): void {
+    const connId =
+      this.scriptTargetConnectionId ??
+      this.activeBufferKey?.split(':')[0] ??
+      [...this.connections.keys()][0]
+    if (!connId) {
+      this.emit('error', { message: `[script] ${text}` })
+      return
+    }
+    const target = this.activeBufferKey?.startsWith(`${connId}:`)
+      ? (this.activeBufferKey.split(':')[1] ?? '*')
+      : '*'
+    this.emitMessage({
+      id: `${connId}-${++this.messageSeq}`,
+      connectionId: connId,
+      target,
+      kind: 'system',
+      text: `[script] ${text}`,
+      timestamp: Date.now()
+    })
+  }
+
+  scriptSendCommand(_scriptId: string, line: string): void {
+    const connId =
+      this.scriptTargetConnectionId ??
+      this.activeBufferKey?.split(':')[0] ??
+      [...this.connections.keys()][0]
+    if (!connId) {
+      this.emit('error', { message: 'Script command: no active connection' })
+      return
+    }
+    const buffer = this.activeBufferKey?.startsWith(`${connId}:`)
+      ? (this.activeBufferKey.split(':')[1] ?? '*')
+      : '*'
+    // Avoid re-entering script aliases for the same line recursively via tryAlias only once
+    this.sendInputFromScript(connId, buffer, line)
+  }
+
+  /** Command path for scripts: skip script alias re-entry, use network aliases + slash. */
+  private sendInputFromScript(connectionId: string, buffer: string, text: string): void {
+    const conn = this.require(connectionId)
+    let trimmed = text.trimEnd()
+    if (!trimmed) return
+    if (trimmed.startsWith('/')) {
+      try {
+        const expanded = expandAlias(trimmed, conn.network.aliases)
+        if (expanded) trimmed = expanded
+      } catch (err) {
+        this.emit('error', {
+          message: err instanceof Error ? err.message : String(err)
+        })
+        return
+      }
+      if (trimmed.startsWith('/')) {
+        this.handleSlash(conn, buffer, trimmed)
+        return
+      }
+    }
+    const target = buffer === '*' ? null : buffer
+    if (!target) {
+      conn.sendRaw(trimmed)
+      return
+    }
+    conn.privmsg(target, trimmed)
+    this.emitMessage(this.viewFromOutbound(conn, target, trimmed, 'privmsg'))
+  }
+
   private wire(conn: IrcConnection): void {
     conn.on('state', () => this.emitConnection(conn))
-    conn.on('registered', () => this.emitConnection(conn))
+    conn.on('registered', () => {
+      this.emitConnection(conn)
+      this.scripts?.dispatch({
+        event: 'CONNECT',
+        nick: conn.nick
+      })
+    })
     conn.on('message', (msg) => this.onIrcMessage(conn, msg))
     conn.on('error', (err) => this.emit('error', { message: err.message }))
-    conn.on('close', () => this.emitConnection(conn))
+    conn.on('close', () => {
+      this.scripts?.dispatch({ event: 'DISCONNECT', nick: conn.nick })
+      this.emitConnection(conn)
+    })
     conn.on('perform', () => {
       for (const line of conn.network.perform ?? []) {
         const trimmed = line.trim()
@@ -520,6 +619,7 @@ export class ConnectionManager extends EventEmitter {
   }
 
   private onIrcMessage(conn: IrcConnection, msg: ParsedIrcMessage): void {
+    this.scriptTargetConnectionId = conn.id
     const view = this.toView(conn, msg)
     if (view) {
       if (view.ignored) {
@@ -534,6 +634,7 @@ export class ConnectionManager extends EventEmitter {
         })
       }
     }
+    this.dispatchScriptFromIrc(conn, msg, view)
     if (
       [
         'JOIN',
@@ -553,6 +654,85 @@ export class ConnectionManager extends EventEmitter {
       ].includes(msg.command)
     ) {
       this.emitConnection(conn)
+    }
+  }
+
+  private dispatchScriptFromIrc(
+    conn: IrcConnection,
+    msg: ParsedIrcMessage,
+    view: IrcMessageView | null
+  ): void {
+    if (!this.scripts) return
+    const nick = msg.nick ?? undefined
+    const address =
+      msg.nick && msg.user && msg.host ? `${msg.nick}!${msg.user}@${msg.host}` : undefined
+    const cmd = msg.command.toUpperCase()
+
+    if (/^\d{3}$/.test(cmd)) {
+      this.scripts.dispatch({
+        event: 'RAW',
+        numeric: cmd,
+        nick,
+        address,
+        text: msg.params.join(' '),
+        args: msg.params,
+        raw: msg.raw
+      })
+    }
+
+    switch (cmd) {
+      case 'PRIVMSG': {
+        const target = msg.params[0] ?? '*'
+        const text = view?.text ?? msg.params[1] ?? ''
+        const isPm = target.toLowerCase() === conn.nick.toLowerCase()
+        this.scripts.dispatch({
+          event: 'TEXT',
+          nick,
+          chan: isPm ? undefined : target,
+          target: isPm ? nick : target,
+          text,
+          address
+        })
+        break
+      }
+      case 'NOTICE':
+        this.scripts.dispatch({
+          event: 'NOTICE',
+          nick,
+          target: msg.params[0],
+          text: msg.params[1] ?? '',
+          address
+        })
+        break
+      case 'JOIN':
+        this.scripts.dispatch({
+          event: 'JOIN',
+          nick,
+          chan: msg.params[0],
+          target: msg.params[0],
+          address
+        })
+        break
+      case 'PART':
+        this.scripts.dispatch({
+          event: 'PART',
+          nick,
+          chan: msg.params[0],
+          target: msg.params[0],
+          text: msg.params[1],
+          address
+        })
+        break
+      case 'QUIT':
+        this.scripts.dispatch({
+          event: 'QUIT',
+          nick,
+          text: msg.params[0],
+          address
+        })
+        break
+      default:
+        break
     }
   }
 
@@ -830,4 +1010,34 @@ export class ConnectionManager extends EventEmitter {
 
 export function bufferKey(connectionId: string, name: string): string {
   return `${connectionId}:${name}`
+}
+
+function toScriptView(r: {
+  id: string
+  name: string
+  filename: string
+  enabled: boolean
+  trusted: boolean
+  permissions: ScriptRecordView['permissions']
+  parseErrors: ScriptRecordView['parseErrors']
+  execErrors: string[]
+  status: ScriptRecordView['status']
+  aliasCount: number
+  eventCount: number
+  loadedAt: number
+}): ScriptRecordView {
+  return {
+    id: r.id,
+    name: r.name,
+    filename: r.filename,
+    enabled: r.enabled,
+    trusted: r.trusted,
+    permissions: r.permissions,
+    parseErrors: r.parseErrors,
+    execErrors: r.execErrors,
+    status: r.status,
+    aliasCount: r.aliasCount,
+    eventCount: r.eventCount,
+    loadedAt: r.loadedAt
+  }
 }

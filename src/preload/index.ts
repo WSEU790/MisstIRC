@@ -3,7 +3,8 @@ import type {
   ConnectRequest,
   MainToRendererEvent,
   MisstIrcApi,
-  NetworkConfig
+  NetworkConfig,
+  ScriptPermissionName
 } from '../shared/types'
 
 const api: MisstIrcApi = {
@@ -26,6 +27,15 @@ const api: MisstIrcApi = {
     ipcRenderer.invoke('misstirc:getCompletions', connectionId, buffer, prefix),
   respondDcc: (offerId: string, accept: boolean) =>
     ipcRenderer.invoke('misstirc:respondDcc', offerId, accept),
+  listScripts: () => ipcRenderer.invoke('misstirc:listScripts'),
+  importScript: (name, source, opts) =>
+    ipcRenderer.invoke('misstirc:importScript', name, source, opts),
+  enableScript: (id: string) => ipcRenderer.invoke('misstirc:enableScript', id),
+  disableScript: (id: string) => ipcRenderer.invoke('misstirc:disableScript', id),
+  reloadScript: (id: string) => ipcRenderer.invoke('misstirc:reloadScript', id),
+  unloadScript: (id: string) => ipcRenderer.invoke('misstirc:unloadScript', id),
+  setScriptPermissions: (id: string, permissions: ScriptPermissionName[]) =>
+    ipcRenderer.invoke('misstirc:setScriptPermissions', id, permissions),
   onEvent: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: MainToRendererEvent): void => {
       handler(payload)

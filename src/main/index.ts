@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ConnectionManager } from '../core/manager'
 import { ChatLogger } from '../services/logging'
+import { ScriptManager } from '../scripting'
 import { AppDatabase } from '../storage/database'
 import {
   createSecretStore,
@@ -16,6 +17,8 @@ import type {
   LogSearchHit,
   MainToRendererEvent,
   NetworkConfig,
+  ScriptPermissionName,
+  ScriptRecordView,
   WhoisInfo
 } from '../shared/types'
 
@@ -23,6 +26,7 @@ let mainWindow: BrowserWindow | null = null
 let db: AppDatabase
 let secrets: SecretStore
 let logger: ChatLogger
+let scripts: ScriptManager
 const manager = new ConnectionManager()
 
 function userDataDbPath(): string {
@@ -63,6 +67,11 @@ function createWindow(): void {
 
 function send(event: MainToRendererEvent): void {
   mainWindow?.webContents.send('misstirc:event', event)
+}
+
+function emitScripts(): void {
+  send({ type: 'scripts', payload: manager.listScripts() })
+  send({ type: 'state', payload: manager.getSnapshot() })
 }
 
 async function resolvePassword(networkId: string, provided?: string): Promise<string | undefined> {
@@ -162,6 +171,81 @@ function registerIpc(): void {
   ipcMain.handle('misstirc:respondDcc', (_e, offerId: string, accept: boolean) =>
     manager.respondDcc(offerId, accept)
   )
+
+  ipcMain.handle('misstirc:listScripts', (): ScriptRecordView[] => manager.listScripts())
+
+  ipcMain.handle(
+    'misstirc:importScript',
+    (
+      _e,
+      name: string,
+      source: string,
+      opts?: { trusted?: boolean; permissions?: ScriptPermissionName[] }
+    ): ScriptRecordView => {
+      const record = scripts.importSource(name, source, {
+        trusted: opts?.trusted,
+        permissions: opts?.permissions as never
+      })
+      emitScripts()
+      return {
+        id: record.id,
+        name: record.name,
+        filename: record.filename,
+        enabled: record.enabled,
+        trusted: record.trusted,
+        permissions: record.permissions,
+        parseErrors: record.parseErrors,
+        execErrors: record.execErrors,
+        status: record.status,
+        aliasCount: record.aliasCount,
+        eventCount: record.eventCount,
+        loadedAt: record.loadedAt
+      }
+    }
+  )
+
+  ipcMain.handle('misstirc:enableScript', (_e, id: string): void => {
+    scripts.enable(id)
+    emitScripts()
+  })
+
+  ipcMain.handle('misstirc:disableScript', (_e, id: string): void => {
+    scripts.disable(id)
+    emitScripts()
+  })
+
+  ipcMain.handle('misstirc:reloadScript', (_e, id: string): ScriptRecordView | null => {
+    const record = scripts.reload(id)
+    emitScripts()
+    if (!record) return null
+    return {
+      id: record.id,
+      name: record.name,
+      filename: record.filename,
+      enabled: record.enabled,
+      trusted: record.trusted,
+      permissions: record.permissions,
+      parseErrors: record.parseErrors,
+      execErrors: record.execErrors,
+      status: record.status,
+      aliasCount: record.aliasCount,
+      eventCount: record.eventCount,
+      loadedAt: record.loadedAt
+    }
+  })
+
+  ipcMain.handle('misstirc:unloadScript', (_e, id: string): void => {
+    scripts.unload(id)
+    emitScripts()
+  })
+
+  ipcMain.handle(
+    'misstirc:setScriptPermissions',
+    (_e, id: string, permissions: ScriptPermissionName[]): void => {
+      scripts.setPermissions(id, permissions as never)
+      emitScripts()
+    }
+  )
 }
 
 function wireManager(): void {
@@ -194,6 +278,12 @@ app.whenReady().then(async () => {
   db = new AppDatabase(userDataDbPath())
   secrets = await createSecretStore(app.getPath('userData'))
   logger = new ChatLogger(join(app.getPath('userData'), 'logs'))
+  scripts = new ScriptManager(join(app.getPath('userData'), 'scripts'), {
+    echo: (id, text) => manager.scriptEcho(id, text),
+    sendCommand: (id, line) => manager.scriptSendCommand(id, line)
+  })
+  scripts.loadFromDisk()
+  manager.setScriptManager(scripts)
   manager.settings = db.getSettings()
   manager.setLogger(logger)
 

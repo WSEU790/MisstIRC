@@ -47,6 +47,18 @@ Full matrix: Project Context `docs/reference-matrix.md`. Summary:
 | Popups / aliases | `.nns` + popups | Planned (Phase 5–6) |
 | DLL UI (DCX/MDX) | Native mIRC DLLs | **Unsupported** |
 
-## mIRC-style scripting
+## mIRC-style scripting (Phase 5 foundation)
 
-Planned compatibility layer will document supported vs unsupported syntax. Until then, status is **Planned / Unsupported** for DLL-dependent features.
+MisstIRC ships a **subset** scripting engine (AST lexer/parser + sandbox). This is **not** a claim of full mIRC or NNScript compatibility.
+
+| Area | Status |
+|------|--------|
+| `alias` / `on` / `raw` top-levels | Partially implemented (subset syntax) |
+| `if` / `else` / `while` / `var` / `halt` / `return` | Partially implemented |
+| `%variables`, `$nick` / `$chan` / `$1`… | Partially implemented |
+| `echo`, IRC slash passthrough (`msg`/`join`/…), `timer` | Partially implemented (permission-gated) |
+| Identifiers / `$calc` / menus / dialogs / COM | Planned / Unsupported |
+| DLL calls (`nnscript.dll`, DCX/MDX, `/dll`) | **Unsupported** |
+| Drop-in `.mrc` / `.nns` from NNScript 4.21 | **Not claimed** — Phase 6 fixtures will document supported workflows |
+
+Untrusted imports get echo-only until the user grants capabilities.

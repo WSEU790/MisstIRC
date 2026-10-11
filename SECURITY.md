@@ -17,11 +17,13 @@
 - Secrets go through `SecretStore` (AES-GCM file fallback for non-Windows/CI; Windows Credential Manager integration planned)
 - TLS certificate validation defaults **on** (`rejectUnauthorized: true`); users may opt out **per network** for known self-signed servers — never as a global silent workaround
 
-## Scripting (future)
+## Scripting (Phase 5)
 
-- Deny-by-default permission model (`src/scripting`)
-- No DLL loading (`allowDllCalls: false`)
-- Execution limits reserved before any runtime lands
+- Deny-by-default / untrusted-by-default (`UNTRUSTED_POLICY` → echo only)
+- Capability grants (`ui.echo`, `irc.command`, `network.send`, `timer`, …) — `process.exec` stripped
+- No DLL loading (`allowDllCalls: false` always)
+- Instruction budget, recursion, while-iteration, and timer caps enforced in runtime
+- No unrestricted Node `fs` / `net` / `child_process` from scripts
 - NNScript/`nnscript.dll` from the reference installer will **not** be loaded or redistributed
 
 ## DCC (future)

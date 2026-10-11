@@ -23,8 +23,8 @@ src/
   renderer/     React shell, components, themes
   core/         IRC connection, parser, CAP, manager
   services/     profiles, (future: notify/log/settings)
-  scripting/    sandbox policy scaffold (no runtime yet)
-  dcc/          isolated stub (no transfers yet)
+  scripting/    AST lexer/parser, sandboxed runtime, ScriptManager (Phase 5)
+  dcc/          isolated offers/path validation (no transfer sockets yet)
   storage/      SQLite, migrations, secret store
   shared/       types / IPC contracts
   mock-irc/     local test server
@@ -48,9 +48,18 @@ Custom engine (evaluated vs wrapping a third-party client; chose custom for CAP/
 - Network profiles and app settings
 - Secrets via `SecretStore` (encrypted file fallback for Linux/CI; Windows Credential Manager planned)
 
+## Scripting (Phase 5 foundation)
+
+- Structured AST lexer/parser — **not** `eval` / string execution
+- Alias engine, `%vars`, `$idents`, `on`/`raw` events, timers
+- `ScriptManager`: import / enable / disable / reload / unload with parse & exec errors
+- Sandbox: untrusted by default, capability grants, instruction/timer/recursion/while limits
+- Hard denies: DLL calls, unrestricted Node `fs`/`net`/`child_process`
+- Full mIRC / NNScript drop-in compatibility is **not** claimed (Phase 6 fixtures)
+
 ## Unfinished subsystems
 
-Scripting and DCC expose **fail-closed** stubs (`assertScriptingUnavailable` / `assertDccUnavailable`). UI status bar lists unfinished features. No fake “working” DCC/script execution.
+DCC transfers remain limited (offers only). Windows installer deferred. Status bar lists unfinished features.
 
 ## Packaging
 

@@ -128,12 +128,46 @@ export interface AppSettings {
   notificationsEnabled: boolean
 }
 
+export type ScriptPermissionName =
+  | 'network.send'
+  | 'irc.command'
+  | 'ui.echo'
+  | 'timer'
+  | 'filesystem.read'
+  | 'filesystem.write'
+  | 'process.exec'
+
+export type ScriptStatusView = 'enabled' | 'disabled' | 'error'
+
+export interface ScriptParseErrorView {
+  line: number
+  column: number
+  message: string
+}
+
+/** Sandboxed script metadata exposed to the UI (source omitted from hot state). */
+export interface ScriptRecordView {
+  id: string
+  name: string
+  filename: string
+  enabled: boolean
+  trusted: boolean
+  permissions: ScriptPermissionName[]
+  parseErrors: ScriptParseErrorView[]
+  execErrors: string[]
+  status: ScriptStatusView
+  aliasCount: number
+  eventCount: number
+  loadedAt: number
+}
+
 export interface AppStateSnapshot {
   connections: ConnectionSnapshot[]
   activeBufferKey: string | null
   settings: AppSettings
   unfinished: UnfinishedFeature[]
   dccOffers: DccOfferView[]
+  scripts: ScriptRecordView[]
 }
 
 export interface UnfinishedFeature {
@@ -190,6 +224,7 @@ export type MainToRendererEvent =
   | { type: 'whois'; payload: WhoisInfo }
   | { type: 'notify'; payload: { title: string; body: string } }
   | { type: 'dcc'; payload: DccOfferView }
+  | { type: 'scripts'; payload: ScriptRecordView[] }
 
 export interface MisstIrcApi {
   getState: () => Promise<AppStateSnapshot>
@@ -205,5 +240,16 @@ export interface MisstIrcApi {
   searchLogs: (query: string, limit?: number) => Promise<LogSearchHit[]>
   getCompletions: (connectionId: string, buffer: string, prefix: string) => Promise<string[]>
   respondDcc: (offerId: string, accept: boolean) => Promise<void>
+  listScripts: () => Promise<ScriptRecordView[]>
+  importScript: (
+    name: string,
+    source: string,
+    opts?: { trusted?: boolean; permissions?: ScriptPermissionName[] }
+  ) => Promise<ScriptRecordView>
+  enableScript: (id: string) => Promise<void>
+  disableScript: (id: string) => Promise<void>
+  reloadScript: (id: string) => Promise<ScriptRecordView | null>
+  unloadScript: (id: string) => Promise<void>
+  setScriptPermissions: (id: string, permissions: ScriptPermissionName[]) => Promise<void>
   onEvent: (handler: (event: MainToRendererEvent) => void) => () => void
 }

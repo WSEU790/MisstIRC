@@ -3,7 +3,7 @@
 Professional Windows-first IRC client built with **Electron**, **React**, **TypeScript**, and **Vite**. Real TCP/TLS IRC networking, multi-connection support, CAP/SASL registration, and a classic channel/PM shell.
 
 > Brand: **MisstIRC** — original assets only.  
-> First slice focuses on a working IRC engine + UI. Full mIRC/NNScript scripting, DCC, and the Windows installer are **not implemented** yet (clearly labeled in the app status bar).
+> Phase 5 adds a sandboxed scripting foundation (AST parser — not full mIRC/NNScript). DCC transfers and the Windows installer remain unfinished (status bar).
 
 ## Requirements
 
@@ -58,4 +58,5 @@ Architecture, plan, and checklist live in the Project Context store under `docs/
 
 - Renderer has no Node access; IPC is a typed preload bridge (`window.misstirc`)
 - IRC passwords are not written into ordinary settings rows
-- DCC and script execution are gated as unfinished — do not treat stub UI as functional
+- Scripts are untrusted by default; grant capabilities explicitly. Not full mIRC/NNScript compatibility.
+- DCC offers are path-validated only — no transfer sockets yet
