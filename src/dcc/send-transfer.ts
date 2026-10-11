@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type Server, type Socket } from 'node:net'
 import { EventEmitter } from 'node:events'
 
@@ -30,6 +30,7 @@ export class DccSendTransfer extends EventEmitter {
   private bytesSent = 0
   private resumeFrom = 0
   private fileSize = 0
+  private payload: Buffer | null = null
 
   constructor(private readonly params: SendTransferParams) {
     super()
@@ -51,6 +52,7 @@ export class DccSendTransfer extends EventEmitter {
       return Promise.reject(new Error(`File exceeds max size (${this.params.maxBytes} bytes)`))
     }
     this.fileSize = st.size
+    this.payload = readFileSync(this.params.filePath)
     const host = this.params.bindHost ?? '127.0.0.1'
 
     return new Promise((resolve, reject) => {
@@ -83,42 +85,34 @@ export class DccSendTransfer extends EventEmitter {
   }
 
   private onPeer(socket: Socket): void {
-    if (this.destroyed) {
+    if (this.destroyed || !this.payload) {
       socket.destroy()
       return
     }
     // One peer only
     this.server?.close()
     this.socket = socket
+    const slice = this.payload.subarray(Math.min(this.resumeFrom, this.payload.length))
     this.bytesSent = this.resumeFrom
     this.emit('started', { id: this.params.id, resumeFrom: this.resumeFrom })
-
-    const stream = createReadStream(this.params.filePath, {
-      start: this.resumeFrom
-    })
 
     socket.on('data', () => {
       /* classic ACK bytes — ignored for pacing in this slice */
     })
     socket.on('error', (err) => this.fail(err))
-    socket.on('close', () => {
-      if (!this.destroyed && this.bytesSent < this.fileSize) {
-        this.fail(new Error('Peer closed before transfer finished'))
+
+    socket.write(slice, (err) => {
+      if (err) {
+        this.fail(err)
+        return
       }
-    })
-    stream.on('error', (err) => this.fail(err))
-    stream.on('data', (chunk: string | Buffer) => {
       if (this.destroyed) return
-      const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk
-      this.bytesSent += buf.length
+      this.bytesSent = this.resumeFrom + slice.length
       this.emit('progress', {
         id: this.params.id,
         bytesSent: this.bytesSent,
         expectedSize: this.fileSize
       })
-    })
-    stream.on('end', () => {
-      if (this.destroyed) return
       this.destroyed = true
       socket.end()
       this.emit('completed', {
@@ -127,7 +121,6 @@ export class DccSendTransfer extends EventEmitter {
         path: this.params.filePath
       })
     })
-    stream.pipe(socket, { end: false })
   }
 
   private fail(err: Error): void {

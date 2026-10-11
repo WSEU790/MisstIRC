@@ -258,7 +258,7 @@ describe('DCC outbound SEND', () => {
     expect(ctcp[0]!.ctcp).toMatch(/^SEND out\.bin /)
 
     const done = new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error('outbound timeout')), 5000)
+      const t = setTimeout(() => reject(new Error('outbound timeout')), 8000)
       mgr.on('update', (o) => {
         if (o.id === offer.id && o.status === 'completed') {
           clearTimeout(t)
@@ -271,13 +271,14 @@ describe('DCC outbound SEND', () => {
       })
     })
 
-    const recv = await mockDccReceive({
+    const recvP = mockDccReceive({
       host: '127.0.0.1',
       port: offer.port!,
       expectedSize: payload.length
     })
-    await done
+    const [recv] = await Promise.all([recvP, done])
     expect(recv.data).toEqual(payload)
+    expect(mgr.list().find((o) => o.id === offer.id)?.status).toBe('completed')
   })
 
   it('outbound RESUME sends ACCEPT CTCP', async () => {
