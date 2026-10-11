@@ -36,6 +36,10 @@ export interface EventContext {
   numeric?: string
   args?: string[]
   raw?: string
+  /** Local nick for $me */
+  me?: string
+  /** Network display name for $network */
+  network?: string
   /** Halt further default processing */
   halt?: boolean
 }
@@ -146,10 +150,13 @@ export class ScriptRuntime {
     if (ctx.target) locals.set('$target', ctx.target)
     if (ctx.text !== undefined) {
       locals.set('$1-', ctx.text)
+      locals.set('$*', ctx.text)
       locals.set('$1', ctx.text.split(/\s+/)[0] ?? '')
     }
     if (ctx.address) locals.set('$address', ctx.address)
     if (ctx.numeric) locals.set('$numeric', ctx.numeric)
+    if (ctx.me) locals.set('$me', ctx.me)
+    if (ctx.network) locals.set('$network', ctx.network)
   }
 
   private execBlock(
@@ -353,17 +360,97 @@ export class ScriptRuntime {
     budget: InstructionBudget,
     ctx: EventContext
   ): string {
-    return raw.replace(/(\$?[0-9]+-|\$[A-Za-z0-9_]+|\$[0-9]+|%[A-Za-z0-9_.]+)/g, (m) => {
-      budget.tick()
-      if (m.startsWith('%')) {
-        const v = locals.get(m.toLowerCase()) ?? this.globals.get(m.toLowerCase())
-        return v === null || v === undefined ? '' : String(v)
+    // First evaluate $func(...) calls (subset helpers), then bare idents/vars.
+    let out = ''
+    let i = 0
+    while (i < raw.length) {
+      if (raw[i] === '$' && /[A-Za-z]/.test(raw[i + 1] ?? '')) {
+        const start = i
+        i += 1
+        while (i < raw.length && /[A-Za-z0-9_]/.test(raw[i]!)) i += 1
+        const name = raw.slice(start, i)
+        let j = i
+        while (raw[j] === ' ' || raw[j] === '\t') j += 1
+        if (raw[j] === '(') {
+          let depth = 0
+          const argStart = j
+          i = j
+          for (; i < raw.length; i++) {
+            if (raw[i] === '(') depth += 1
+            else if (raw[i] === ')') {
+              depth -= 1
+              if (depth === 0) {
+                i += 1
+                break
+              }
+            }
+          }
+          out += this.evalCallSource(name, raw.slice(argStart + 1, i - 1), locals, budget, ctx)
+          continue
+        }
+        out += this.expandToken(name, locals, budget, ctx)
+        continue
       }
-      const v = locals.get(m) ?? this.globals.get(m)
-      if (v !== undefined && v !== null) return String(v)
-      // evaluate as ident
-      return String(this.evalExpr({ type: 'IdentExpr', name: m }, locals, budget, ctx) ?? '')
+      if (raw[i] === '%' && /[A-Za-z]/.test(raw[i + 1] ?? '')) {
+        const start = i
+        i += 1
+        while (i < raw.length && /[A-Za-z0-9_.]/.test(raw[i]!)) i += 1
+        out += this.expandToken(raw.slice(start, i), locals, budget, ctx)
+        continue
+      }
+      if (raw[i] === '$' && /[0-9*]/.test(raw[i + 1] ?? '')) {
+        const start = i
+        i += 1
+        while (i < raw.length && /[0-9*\-]/.test(raw[i]!)) i += 1
+        out += this.expandToken(raw.slice(start, i), locals, budget, ctx)
+        continue
+      }
+      out += raw[i]
+      i += 1
+    }
+    return out
+  }
+
+  private expandToken(
+    m: string,
+    locals: Map<string, ScriptValue>,
+    budget: InstructionBudget,
+    ctx: EventContext
+  ): string {
+    budget.tick()
+    if (m.startsWith('%')) {
+      const v = locals.get(m.toLowerCase()) ?? this.globals.get(m.toLowerCase())
+      return v === null || v === undefined ? '' : String(v)
+    }
+    const v = locals.get(m) ?? this.globals.get(m)
+    if (v !== undefined && v !== null) return String(v)
+    return String(this.evalExpr({ type: 'IdentExpr', name: m }, locals, budget, ctx) ?? '')
+  }
+
+  /** Evaluate `$func(a,b)` from expandRaw using the CallExpr path. */
+  private evalCallSource(
+    callee: string,
+    argsSrc: string,
+    locals: Map<string, ScriptValue>,
+    budget: InstructionBudget,
+    ctx: EventContext
+  ): string {
+    const args = splitCallArgs(argsSrc).map((a) => {
+      const trimmed = a.trim()
+      if (/^%[A-Za-z0-9_.]+$/.test(trimmed)) {
+        return { type: 'VarExpr' as const, name: trimmed }
+      }
+      if (/^\d+(\.\d+)?$/.test(trimmed)) {
+        return { type: 'NumberExpr' as const, value: Number(trimmed) }
+      }
+      if (/^\$[A-Za-z0-9_]+$/.test(trimmed) || /^\$[0-9]+-?$/.test(trimmed)) {
+        return { type: 'IdentExpr' as const, name: trimmed }
+      }
+      // Expand nested tokens inside string arg
+      return { type: 'StringExpr' as const, value: this.expandRaw(trimmed, locals, budget, ctx) }
     })
+    const value = this.evalExpr({ type: 'CallExpr', callee, args }, locals, budget, ctx)
+    return value === null || value === undefined ? '' : String(value)
   }
 
   private evalExpr(
@@ -425,14 +512,52 @@ export class ScriptRuntime {
         }
       }
       case 'CallExpr': {
-        // Limited safe identifiers as functions
-        if (expr.callee === '$upper' || expr.callee === '$lower' || expr.callee === '$len') {
-          const a = String(this.evalExpr(expr.args[0] ?? { type: 'StringExpr', value: '' }, locals, budget, ctx))
-          if (expr.callee === '$upper') return a.toUpperCase()
-          if (expr.callee === '$lower') return a.toLowerCase()
-          return a.length
+        const arg = (i: number): string =>
+          String(this.evalExpr(expr.args[i] ?? { type: 'StringExpr', value: '' }, locals, budget, ctx))
+        const argN = (i: number): number => Number(this.evalExpr(expr.args[i] ?? { type: 'NumberExpr', value: 0 }, locals, budget, ctx))
+        switch (expr.callee) {
+          case '$upper':
+            return arg(0).toUpperCase()
+          case '$lower':
+            return arg(0).toLowerCase()
+          case '$len':
+            return arg(0).length
+          case '$left': {
+            const n = Math.max(0, Math.floor(argN(1)))
+            return arg(0).slice(0, n)
+          }
+          case '$right': {
+            const n = Math.max(0, Math.floor(argN(1)))
+            const s = arg(0)
+            return n === 0 ? '' : s.slice(-n)
+          }
+          case '$mid': {
+            const s = arg(0)
+            const start = Math.max(1, Math.floor(argN(1))) - 1
+            const len = expr.args[2] !== undefined ? Math.max(0, Math.floor(argN(2))) : undefined
+            return len === undefined ? s.slice(start) : s.slice(start, start + len)
+          }
+          case '$replace': {
+            // $replace(text, find, repl) — single pair subset
+            const s = arg(0)
+            const find = arg(1)
+            const repl = arg(2)
+            if (!find) return s
+            return s.split(find).join(repl)
+          }
+          case '$pos': {
+            const idx = arg(0).toLowerCase().indexOf(arg(1).toLowerCase())
+            return idx === -1 ? 0 : idx + 1
+          }
+          case '$ctime':
+            return Math.floor(Date.now() / 1000)
+          case '$asctime': {
+            const ts = expr.args[0] !== undefined ? argN(0) : Math.floor(Date.now() / 1000)
+            return new Date(ts * 1000).toISOString()
+          }
+          default:
+            return this.ident(expr.callee, ctx)
         }
-        return this.ident(expr.callee, ctx)
       }
       default:
         return null
@@ -447,6 +572,12 @@ export class ScriptRuntime {
         return ctx.chan ?? ''
       case '$target':
         return ctx.target ?? ''
+      case '$address':
+        return ctx.address ?? ''
+      case '$me':
+        return ctx.me ?? ''
+      case '$network':
+        return ctx.network ?? ''
       case '$true':
         return true
       case '$false':
@@ -455,6 +586,8 @@ export class ScriptRuntime {
         return null
       case '$script':
         return this.opts.scriptId
+      case '$ctime':
+        return Math.floor(Date.now() / 1000)
       default:
         return ''
     }
@@ -482,4 +615,23 @@ function matchPattern(pattern: string, value: string): boolean {
   if (pattern === '*' || pattern === '') return true
   const esc = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')
   return new RegExp(`^${esc}$`, 'i').test(value)
+}
+
+/** Split top-level comma args, ignoring commas inside nested (). */
+function splitCallArgs(src: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  let depth = 0
+  for (const ch of src) {
+    if (ch === '(') depth += 1
+    if (ch === ')') depth -= 1
+    if (ch === ',' && depth === 0) {
+      out.push(cur)
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  if (cur.trim() || out.length) out.push(cur)
+  return out
 }

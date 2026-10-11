@@ -1,6 +1,7 @@
-# MisstIRC Windows packaging (Phase 8)
-# Acceptance rule 11: do NOT distribute an installer until build + smoke tests pass.
-# Prefer `npm run pack:win:dir` for a local unpacked dry-run before `pack:win`.
+# MisstIRC packaging
+# Acceptance rule 11: do NOT distribute a signed/public installer until
+# Windows smoke in TESTING.md / RELEASE.md is green.
+# Prefer `npm run pack:win:dir` for an unpacked dry-run before `pack:win`.
 
 appId: com.misstirc.app
 productName: MisstIRC
@@ -12,18 +13,34 @@ directories:
   buildResources: build
 
 files:
-  - out/**/*
+  - from: out
+    to: out
+    filter:
+      - '**/*'
   - package.json
 
 extraMetadata:
   main: out/main/index.js
 
 asar: true
+# Native addon must load from outside asar
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**/*'
+  - '**/*.node'
 
-# Native module: rebuild for Electron ABI via electron-builder install-app-deps
+# Rebuild native modules for the Electron ABI at pack time
 npmRebuild: true
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+
+# Do not attempt code signing in CI/cloud agents
+forceCodeSigning: false
+
+electronLanguages:
+  - en-US
 
 win:
+  # Target Windows x64 only for the first ship path
   target:
     - target: nsis
       arch:
@@ -33,6 +50,9 @@ win:
         - x64
   # Optional: add build/icon.ico for branded installers
   # icon: build/icon.ico
+  # Signing intentionally unset until smoke criteria are met
+  signAndEditExecutable: false
+  verifyUpdateCodeSignature: false
 
 nsis:
   oneClick: false
@@ -44,5 +64,14 @@ nsis:
   shortcutName: MisstIRC
   uninstallDisplayName: MisstIRC
   deleteAppDataOnUninstall: false
+  differentialPackage: false
 
+linux:
+  target:
+    - target: dir
+      arch:
+        - x64
+  category: Network
+
+# Never auto-publish
 publish: null

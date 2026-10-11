@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events'
+import { mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type {
   AppSettings,
   AppStateSnapshot,
@@ -35,14 +38,14 @@ const UNFINISHED: UnfinishedFeature[] = [
   },
   {
     id: 'dcc',
-    label: 'DCC transfers',
+    label: 'DCC / NAT',
     detail: DCC_LIMITATIONS
   },
   {
     id: 'installer',
     label: 'Windows installer',
     detail:
-      'Packaging config ready (electron-builder); installer not shipped until Windows smoke tests pass.'
+      'Packaging hardened (electron-builder); unsigned NSIS only after Windows smoke checklist — no signed ship yet.'
   }
 ]
 
@@ -52,12 +55,27 @@ export class ConnectionManager extends EventEmitter {
   private unreads = new Map<string, number>()
   private messageIndex: IrcMessageView[] = []
   private logger: ChatLogger | null = null
-  private readonly dcc = new DccManager()
+  private readonly dcc: DccManager
   private scripts: ScriptManager | null = null
   /** Connection used when scripts issue /commands */
   private scriptTargetConnectionId: string | null = null
   activeBufferKey: string | null = null
   settings: AppSettings = defaultAppSettings()
+
+  constructor(opts?: { downloadDir?: string }) {
+    super()
+    const dir = opts?.downloadDir ?? join(tmpdir(), 'misstirc-dcc')
+    mkdirSync(dir, { recursive: true })
+    this.dcc = new DccManager(dir)
+    this.dcc.on('update', (offer: DccOfferView) => {
+      this.emit('dcc', offer)
+      this.emitState()
+    })
+  }
+
+  setDccDownloadDir(dir: string): void {
+    this.dcc.setDownloadDir(dir)
+  }
 
   setLogger(logger: ChatLogger | null): void {
     this.logger = logger
@@ -150,11 +168,48 @@ export class ConnectionManager extends EventEmitter {
 
   respondDcc(offerId: string, accept: boolean): DccOfferView | null {
     const offer = this.dcc.respond(offerId, accept)
+    this.flushDccOutbound()
     if (offer) {
       this.emit('dcc', offer)
       this.emitState()
     }
     return offer
+  }
+
+  cancelDcc(offerId: string): DccOfferView | null {
+    const offer = this.dcc.cancel(offerId)
+    if (offer) {
+      this.emit('dcc', offer)
+      this.emitState()
+    }
+    return offer
+  }
+
+  /** Start/continue receive without waiting for peer ACCEPT (e.g. peer lacks RESUME). */
+  forceDccReceive(offerId: string): DccOfferView | null {
+    const offer = this.dcc.startTransferDirect(offerId)
+    if (offer) {
+      this.emit('dcc', offer)
+      this.emitState()
+    }
+    return offer
+  }
+
+  private flushDccOutbound(): void {
+    for (const line of this.dcc.takeOutbound()) {
+      const conn = this.connections.get(line.connectionId)
+      if (!conn) continue
+      conn.sendCtcp(line.nick, 'DCC', line.ctcp)
+      this.emitMessage({
+        id: `${conn.id}-${++this.messageSeq}`,
+        connectionId: conn.id,
+        target: line.nick,
+        kind: 'ctcp',
+        nick: conn.nick,
+        text: `DCC ${line.ctcp}`,
+        timestamp: Date.now()
+      })
+    }
   }
 
   sendInput(connectionId: string, buffer: string, text: string): void {
@@ -555,13 +610,20 @@ export class ConnectionManager extends EventEmitter {
       this.emitConnection(conn)
       this.scripts?.dispatch({
         event: 'CONNECT',
-        nick: conn.nick
+        nick: conn.nick,
+        me: conn.nick,
+        network: conn.network.name
       })
     })
     conn.on('message', (msg) => this.onIrcMessage(conn, msg))
     conn.on('error', (err) => this.emit('error', { message: err.message }))
     conn.on('close', () => {
-      this.scripts?.dispatch({ event: 'DISCONNECT', nick: conn.nick })
+      this.scripts?.dispatch({
+        event: 'DISCONNECT',
+        nick: conn.nick,
+        me: conn.nick,
+        network: conn.network.name
+      })
       this.notifyDisconnect(conn.id, conn.network.name)
       this.emitConnection(conn)
     })
@@ -586,6 +648,7 @@ export class ConnectionManager extends EventEmitter {
       if (!ctcp) return
       if (ctcp.type === 'DCC' && msg.nick) {
         const offer = this.dcc.ingestCtcp(conn.id, msg.nick, ctcp.args)
+        this.flushDccOutbound()
         if (offer) {
           this.emit('dcc', offer)
           this.emitState()
@@ -595,7 +658,7 @@ export class ConnectionManager extends EventEmitter {
             target: msg.nick,
             kind: 'ctcp',
             nick: msg.nick,
-            text: `DCC SEND offer: ${offer.safeFilename} (${offer.status}) — ${offer.note}`,
+            text: `DCC ${ctcp.args.split(/\s+/)[0] ?? 'offer'}: ${offer.safeFilename} (${offer.status}) — ${offer.note}`,
             timestamp: Date.now()
           })
         }
@@ -676,13 +739,13 @@ export class ConnectionManager extends EventEmitter {
     const address =
       msg.nick && msg.user && msg.host ? `${msg.nick}!${msg.user}@${msg.host}` : undefined
     const cmd = msg.command.toUpperCase()
+    const base = { me: conn.nick, network: conn.network.name, nick, address }
 
     if (/^\d{3}$/.test(cmd)) {
       this.scripts.dispatch({
+        ...base,
         event: 'RAW',
         numeric: cmd,
-        nick,
-        address,
         text: msg.params.join(' '),
         args: msg.params,
         raw: msg.raw
@@ -692,52 +755,97 @@ export class ConnectionManager extends EventEmitter {
     switch (cmd) {
       case 'PRIVMSG': {
         const target = msg.params[0] ?? '*'
-        const text = view?.text ?? msg.params[1] ?? ''
+        const rawText = msg.params[1] ?? ''
+        const ctcp = parseCtcp(rawText)
         const isPm = target.toLowerCase() === conn.nick.toLowerCase()
-        this.scripts.dispatch({
-          event: 'TEXT',
-          nick,
-          chan: isPm ? undefined : target,
-          target: isPm ? nick : target,
-          text,
-          address
-        })
+        const chan = isPm ? undefined : target
+        const eventTarget = isPm ? nick : target
+        if (ctcp?.type === 'ACTION') {
+          this.scripts.dispatch({
+            ...base,
+            event: 'ACTION',
+            chan,
+            target: eventTarget,
+            text: ctcp.args
+          })
+        } else {
+          this.scripts.dispatch({
+            ...base,
+            event: 'TEXT',
+            chan,
+            target: eventTarget,
+            text: view?.text ?? (ctcp ? ctcp.args : rawText)
+          })
+        }
         break
       }
       case 'NOTICE':
         this.scripts.dispatch({
+          ...base,
           event: 'NOTICE',
-          nick,
           target: msg.params[0],
-          text: msg.params[1] ?? '',
-          address
+          text: msg.params[1] ?? ''
         })
         break
       case 'JOIN':
         this.scripts.dispatch({
+          ...base,
           event: 'JOIN',
-          nick,
           chan: msg.params[0],
-          target: msg.params[0],
-          address
+          target: msg.params[0]
         })
         break
       case 'PART':
         this.scripts.dispatch({
+          ...base,
           event: 'PART',
-          nick,
           chan: msg.params[0],
           target: msg.params[0],
-          text: msg.params[1],
-          address
+          text: msg.params[1]
         })
         break
       case 'QUIT':
         this.scripts.dispatch({
+          ...base,
           event: 'QUIT',
-          nick,
+          text: msg.params[0]
+        })
+        break
+      case 'NICK':
+        this.scripts.dispatch({
+          ...base,
+          event: 'NICK',
           text: msg.params[0],
-          address
+          target: msg.params[0]
+        })
+        break
+      case 'KICK':
+        this.scripts.dispatch({
+          ...base,
+          event: 'KICK',
+          chan: msg.params[0],
+          target: msg.params[1],
+          text: msg.params[2]
+        })
+        break
+      case 'TOPIC':
+        this.scripts.dispatch({
+          ...base,
+          event: 'TOPIC',
+          chan: msg.params[0],
+          target: msg.params[0],
+          text: msg.params[1]
+        })
+        break
+      case 'MODE':
+        this.scripts.dispatch({
+          ...base,
+          event: 'MODE',
+          chan: msg.params[0]?.startsWith('#') || msg.params[0]?.startsWith('&')
+            ? msg.params[0]
+            : undefined,
+          target: msg.params[0],
+          text: msg.params.slice(1).join(' ')
         })
         break
       default:

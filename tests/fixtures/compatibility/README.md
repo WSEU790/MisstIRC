@@ -9,5 +9,7 @@ Original MisstIRC examples for Phase 6 tests. **Not** copied from NNScript `.nns
 | `workflow-away-echo.mrc` | Away-status style echo | partial / works (alias) |
 | `workflow-unsupported-dll.mrc` | `/dll` reporting | unsupported (blocking) |
 | `workflow-nickserv-note.mrc` | NickServ guidance alias | works |
+| `workflow-string-helpers.mrc` | `$upper`/`$left`/`$replace` + ACTION | works |
+| `workflow-kick-topic.mrc` | KICK/TOPIC/NICK events | works |
 
 Each fixture is exercised in `tests/phase6-compatibility.test.ts`.

@@ -41,11 +41,12 @@ Full matrix: Project Context `docs/reference-matrix.md`.
 | Construct | Status | Notes | Fixture / test |
 |-----------|--------|-------|----------------|
 | `alias { }` | works | Nested alias calls | `workflow-greeter.mrc` |
-| `on LEVEL:EVENT:…` | partial | TEXT/JOIN/PART/QUIT/NOTICE/CONNECT/DISCONNECT; pattern subset | `workflow-greeter.mrc` |
+| `on LEVEL:EVENT:…` | partial | TEXT/ACTION/JOIN/PART/QUIT/NOTICE/NICK/KICK/TOPIC/MODE/CONNECT/DISCONNECT; pattern subset | `workflow-greeter.mrc`, `workflow-kick-topic.mrc` |
 | `raw N:…` | partial | Numeric handlers; match subset | unit (Phase 5) |
 | `if` / `else` / `while` | works | Caps on iterations / instructions | Phase 5 tests |
 | `var` / `inc` / `dec` | works | `%vars` | Phase 5 tests |
-| `$nick` `$chan` `$1` `$1-` `$*` | partial | Common idents only | Phase 5–6 |
+| `$nick` `$chan` `$me` `$network` `$1` `$1-` `$*` | partial | Common idents only | Phase 5–6 |
+| `$upper` `$lower` `$len` `$left` `$right` `$mid` `$replace` `$pos` `$ctime` `$asctime` | works | Safe string/time helpers | `workflow-string-helpers.mrc` |
 | `echo` / `timer` | works | Permission-gated | Phase 5 |
 | IRC slash (`msg`/`join`/…) | works | Requires grants | Phase 5 |
 | `halt` / `return` | works | Event cancel via `halt` | Phase 5 |
@@ -75,7 +76,7 @@ These map **workflows**, not proprietary script code.
 | Protections / flood | script modules | Planned (app-level ignore exists) | unsupported* | *as NNS modules |
 | Themes `.nnt` | theme engine | CSS variables only | unsupported | license + Phase 7 editor |
 | Native DLLs | nnscript.dll, DCX/MDX | No DLL host | unsupported | `workflow-unsupported-dll.mrc` |
-| DCC helpers | scripts + relay | Offers only; no transfer sockets | partial | Phase 4 DCC tests |
+| DCC helpers | scripts + relay | Classic SEND receive + RESUME/ACCEPT (local mocks); NAT not guaranteed | partial | `tests/dcc-transfer.test.ts` |
 
 \* “Unsupported” here means MisstIRC does **not** load NNScript protection modules; app-level ignore/highlights are separate.
 

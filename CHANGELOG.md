@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 — DCC transfers, scripting depth, packaging harden
+
+### Added
+
+- DCC classic SEND receive with progress, cancel, queue cap, path safety; RESUME/ACCEPT path; local mock peer tests (`tests/dcc-transfer.test.ts`)
+- Downloads land under `userData/downloads` and are **never auto-executed**
+- Scripting: `$upper/$lower/$len/$left/$right/$mid/$replace/$pos/$ctime/$asctime`, `$me`/`$network`, ACTION/NICK/KICK/TOPIC/MODE events
+- Compatibility fixtures `workflow-string-helpers.mrc`, `workflow-kick-topic.mrc`
+- Scripts UI: expandable diagnostics grouped by unsupported/partial/works
+- Packaging: hardened `electron-builder.yml` (asarUnpack for native modules, explicit Linux/Win dir targets, signing forced off); exact Windows smoke steps in `TESTING.md`
+
+### Limits (honest)
+
+- DCC through NAT/firewalls is **not** guaranteed; outbound SEND not implemented in this slice
+- No full mIRC/NNScript drop-in; no signed installer until Windows smoke is green
+
 ## 0.7.0 — Phase 8 production readiness (packaging prep)
 
 ### Added

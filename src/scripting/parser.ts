@@ -141,13 +141,13 @@ export function parseScript(source: string): ParseResult {
     let textMatch: string | undefined
     let targetMatch: string | undefined
     if (match('COLON')) {
-      // optional text match
+      // optional text and/or target: on *:TEXT:hi*:#:{  OR  on *:KICK:#:{  OR  on *:NICK:{
       const parts: string[] = []
       while (!check('COLON') && !check('LBRACE') && !check('NEWLINE') && !check('EOF')) {
         parts.push(at().value)
         pos += 1
       }
-      textMatch = parts.join('') || undefined
+      const first = parts.join('') || undefined
       if (match('COLON')) {
         const tparts: string[] = []
         while (!check('LBRACE') && !check('NEWLINE') && !check('EOF') && !check('COLON')) {
@@ -158,7 +158,20 @@ export function parseScript(source: string): ParseResult {
         if (match('COLON')) {
           /* eat */
         }
-        targetMatch = tparts.join('') || undefined
+        const second = tparts.join('') || undefined
+        if (second) {
+          textMatch = first
+          targetMatch = second
+        } else if (first === '#' || first === '&' || first === '*' || first?.startsWith('#') || first?.startsWith('&')) {
+          // on *:KICK:#:{ — sole match is the channel target
+          targetMatch = first
+        } else {
+          textMatch = first
+        }
+      } else if (first === '#' || first === '&' || first === '*' || first?.startsWith('#') || first?.startsWith('&')) {
+        targetMatch = first
+      } else {
+        textMatch = first
       }
       if (match('COLON')) {
         /* eat final */

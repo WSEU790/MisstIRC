@@ -153,4 +153,63 @@ describe('Phase 6 ScriptManager import diagnostics', () => {
     expect(m.tryAlias('/awaystatus')).toBe(true)
     expect(echoes.some((t) => /Away status/i.test(t))).toBe(true)
   })
+
+  it('string-helpers fixture runs $upper/$left/$replace and parses ACTION', () => {
+    const echoes: string[] = []
+    const d = mkdtempSync(join(tmpdir(), 'misst-p6-str-'))
+    dirs.push(d)
+    const m = new ScriptManager(d, {
+      echo: (_id, t) => echoes.push(t),
+      sendCommand: () => undefined
+    })
+    const rec = m.importSource('str.mrc', load('workflow-string-helpers.mrc'))
+    expect(rec.status).toBe('enabled')
+    expect(rec.diagnostics.hasBlockingUnsupported).toBe(false)
+    expect(m.tryAlias('/strdemo')).toBe(true)
+    expect(echoes.some((t) => /upper\s*=\s*HELLOWORLD/i.test(t))).toBe(true)
+    expect(echoes.some((t) => /repl\s*=\s*HelloMisstIRC/i.test(t))).toBe(true)
+    echoes.length = 0
+    m.dispatch({
+      event: 'ACTION',
+      nick: 'eve',
+      chan: '#lobby',
+      text: 'waves',
+      me: 'me',
+      network: 'TestNet'
+    })
+    expect(echoes.some((t) => /action from eve/i.test(t))).toBe(true)
+  })
+
+  it('kick-topic fixture dispatches KICK/TOPIC/NICK', () => {
+    const echoes: string[] = []
+    const d = mkdtempSync(join(tmpdir(), 'misst-p6-kick-'))
+    dirs.push(d)
+    const m = new ScriptManager(d, {
+      echo: (_id, t) => echoes.push(t),
+      sendCommand: () => undefined
+    })
+    const rec = m.importSource('kt.mrc', load('workflow-kick-topic.mrc'))
+    expect(rec.enabled).toBe(true)
+    m.dispatch({
+      event: 'KICK',
+      nick: 'op',
+      chan: '#c',
+      target: 'spammer',
+      text: 'bye',
+      network: 'N',
+      me: 'me'
+    })
+    m.dispatch({
+      event: 'TOPIC',
+      nick: 'op',
+      chan: '#c',
+      text: 'new topic',
+      network: 'N',
+      me: 'me'
+    })
+    m.dispatch({ event: 'NICK', nick: 'old', text: 'new', me: 'me', network: 'N' })
+    expect(echoes.some((t) => /kick\s*:\s*op kicked spammer/i.test(t))).toBe(true)
+    expect(echoes.some((t) => /topic by op/i.test(t))).toBe(true)
+    expect(echoes.some((t) => /nick change old to new/i.test(t))).toBe(true)
+  })
 })

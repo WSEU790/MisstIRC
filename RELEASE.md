@@ -2,26 +2,26 @@
 
 ## Policy (§26 rule 11)
 
-**Do not ship or publish an installer** until:
+**Do not ship or publish an installer** (signed or unsigned) until:
 
 1. `npm test` and `npm run typecheck` are green  
 2. `npm run build` succeeds  
-3. A manual Electron smoke launch succeeds (see `TESTING.md`)  
-4. Optionally `npm run pack:win:dir` produces an unpacked app that launches on the target OS  
+3. The **Windows smoke checklist** in `TESTING.md` is green on Windows x64  
+4. `npm run pack:win:dir` launches on Windows (`release/win-unpacked/MisstIRC.exe`)  
 
-The NSIS target (`npm run pack:win`) is configured for reproducibility; treating its output as a release artifact requires the checklist above.
+Code signing credentials must never be committed. `forceCodeSigning: false` until smoke is signed off.
 
 ## Reproducible packaging
 
-Config: `electron-builder.yml` (Windows x64 NSIS + dir).
+Config: `electron-builder.yml` (Windows x64 NSIS + dir; Linux dir for CI dry-run).
 
 | Command | Result |
 |---------|--------|
-| `npm run pack:dir` | Unpacked app for **current** host OS → `release/` |
-| `npm run pack:win:dir` | Unpacked Windows x64 tree (may need Wine on Linux) → `release/` |
-| `npm run pack:win` | NSIS installer + dir (same gate as above) |
+| `npm run pack:dir` | Linux x64 unpacked → `release/linux-unpacked/` |
+| `npm run pack:win:dir` | Windows x64 unpacked → `release/win-unpacked/` (Wine may be needed on Linux) |
+| `npm run pack:win` | NSIS installer + dir (same gate as above; **unsigned**) |
 
-Artifacts land in `release/` (gitignored). Native modules rebuild via `electron-builder install-app-deps`.
+Artifacts land in `release/` (gitignored). Native modules: `asarUnpack` for `better-sqlite3`; rebuild via `electron-builder install-app-deps`.
 
 ### Dry-run (Linux CI / cloud agent)
 
@@ -30,10 +30,11 @@ npm ci
 npm test
 npm run typecheck
 npm run pack:dir
-# Inspect release/*/ — do not distribute as a Windows installer from a Linux dry-run
+# Inspect release/linux-unpacked/ — not a Windows installer
+# Optional: npm run pack:win:dir  (may fail without Wine; still not a ship artifact)
 ```
 
-Windows installer smoke must be validated on Windows (or a Windows CI runner).
+Windows installer smoke must be validated on Windows (or a Windows CI runner). See exact steps in `TESTING.md`.
 
 ## Upgrade
 

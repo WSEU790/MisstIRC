@@ -45,20 +45,29 @@ Manual long-session soak is **Implemented but incompletely tested** until a reco
 ## Packaging dry-run (not a ship gate by itself)
 
 ```bash
-npm run pack:dir          # host OS unpacked app
-npm run pack:win:dir      # Windows x64 unpacked (Wine may be required on Linux)
+npm run pack:dir          # Linux x64 unpacked app → release/linux-unpacked/
+npm run pack:win:dir      # Windows x64 unpacked (Wine/`wine64` may be required on Linux)
 ```
 
-**Do not** publish `pack:win` NSIS output until the smoke checklist below is green on Windows (§26 rule 11).
+**Do not** publish `pack:win` NSIS output until the **Windows smoke checklist** below is green (§26 rule 11).  
+**Do not** ship a signed installer until that checklist is met and signing credentials are configured outside the repo.
 
-## Electron smoke checklist (required before installer ship)
+## Windows smoke checklist (required before installer ship)
 
-1. `npm run build` then launch via `npm run preview` or packaged dir.  
-2. Brand + Customize open; theme switch persists after restart.  
-3. Connect (mock or real), join, message, disconnect/reconnect.  
-4. Import greeter script; confirm dll fixture diagnostics.  
-5. Export config — confirm no password fields.  
-6. Status bar unfinished items remain honest (DCC transfers, full script compat, installer until smoke signed off).
+Run on a **Windows x64** machine (or Windows CI runner) — not only the Linux pack dry-run.
+
+1. `npm ci` → `npm test` → `npm run typecheck` → `npm run build` all green.  
+2. `npm run pack:win:dir` → launch `release/win-unpacked/MisstIRC.exe`.  
+3. First launch: window title **MisstIRC**, Customize opens, theme switch persists after restart.  
+4. Connect (mock IRC or a real network), join a channel, send a message, disconnect, reconnect.  
+5. DCC: with a local/direct peer (or mock), accept a SEND offer → file appears under `%APPDATA%/misstirc/downloads` and is **not** executed; cancel works; RESUME path if a partial file exists.  
+6. Scripts: import `workflow-greeter.mrc` (runs); import `workflow-unsupported-dll.mrc` → diagnostics + blocked enable; Force enable still errors on `/dll` at runtime.  
+7. Export config — confirm **no** password/credential fields in JSON.  
+8. Create a profile backup; restore it; settings return without secrets.  
+9. Quit cleanly; no crash.log spam for the session (or only expected handled errors).  
+10. Only then consider `npm run pack:win` NSIS — still **unsigned** until a separate signing pass.
+
+Status bar unfinished items must remain honest until this checklist is signed off.
 
 ## Manual UI checklist (daily use)
 

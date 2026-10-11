@@ -29,6 +29,8 @@ const api: MisstIrcApi = {
     ipcRenderer.invoke('misstirc:getCompletions', connectionId, buffer, prefix),
   respondDcc: (offerId: string, accept: boolean) =>
     ipcRenderer.invoke('misstirc:respondDcc', offerId, accept),
+  cancelDcc: (offerId: string) => ipcRenderer.invoke('misstirc:cancelDcc', offerId),
+  forceDccReceive: (offerId: string) => ipcRenderer.invoke('misstirc:forceDccReceive', offerId),
   listScripts: () => ipcRenderer.invoke('misstirc:listScripts'),
   importScript: (name, source, opts) =>
     ipcRenderer.invoke('misstirc:importScript', name, source, opts),

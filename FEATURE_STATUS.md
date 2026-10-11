@@ -32,7 +32,7 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | IRCv3 caps (account-*, away-notify, chghost, batch, labeled-response, multi-prefix, server-time, message-tags, SASL) | Implemented and tested | Negotiated; batch tracked |
 | ISUPPORT (005) | Implemented and tested | |
 | CTCP VERSION/TIME/PING/ACTION + flood prefs | Implemented and tested | |
-| DCC SEND offer parse + path validation + approve/reject | Partially implemented | **No active transfer sockets**; NAT/firewall limits labeled |
+| DCC SEND receive + RESUME/ACCEPT + progress/cancel/queue | Implemented and tested (local/direct) | Mock peer tests; **NAT/firewall not guaranteed**; no outbound SEND; never auto-exec |
 | Ignore rules | Implemented and tested | |
 | Highlights + notification engine | Implemented but incompletely tested | Main-process Notification |
 | Automation (perform, aliases, auto-away, alt nicks) | Implemented and tested | Runaway alias guard; no secret perform |
@@ -56,7 +56,7 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| mIRC-style syntax compat layer | Partially implemented | Documented works/partial/unsupported |
+| mIRC-style syntax compat layer | Partially implemented | Expanded helpers/events + fixtures; still not drop-in |
 | Compat diagnostics on import | Implemented and tested | Blocking unsupported disables script |
 | Unsupported command reporting | Implemented and tested | Never silent; runtime throws |
 | Menu/popup scaffolding | Partially implemented | Parse + list API; no full popup engine |
@@ -84,6 +84,6 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | Security review (Electron checklist) | Implemented and tested | `SECURITY.md` Phase 8 section |
 | Crash hooks + recovery guidance | Partially implemented | Local `crash.log`; manual recovery steps in TESTING |
 | Long-session guidance | Implemented but incompletely tested | Documented soak procedure |
-| electron-builder Windows x64 config | Implemented but incompletely tested | Dry-run via `pack:dir`; **installer not shipped** |
+| electron-builder Windows x64 config | Implemented but incompletely tested | Linux `pack:dir` + hardened yml; Win dir/NSIS unsigned; **installer not shipped** |
 | Upgrade / uninstall docs | Implemented and tested | `RELEASE.md` / `DEVELOPMENT.md` |
-| Signed installer + smoke on Windows | Planned / Blocked | Needs Windows smoke + signing |
+| Signed installer + smoke on Windows | Planned / Blocked | Needs Windows smoke checklist + signing outside repo |

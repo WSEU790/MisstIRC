@@ -1,5 +1,9 @@
-import { useState } from 'react'
-import type { ScriptPermissionName, ScriptRecordView } from '../../../shared/types'
+import { useMemo, useState } from 'react'
+import type {
+  CompatFindingView,
+  ScriptPermissionName,
+  ScriptRecordView
+} from '../../../shared/types'
 
 const SAMPLE = `; MisstIRC sample — untrusted by default (echo only)
 alias hi {
@@ -24,6 +28,41 @@ interface Props {
   onPermissions: (id: string, permissions: ScriptPermissionName[]) => Promise<void>
 }
 
+function FindingList({ findings }: { findings: CompatFindingView[] }): React.JSX.Element {
+  const groups = useMemo(() => {
+    const order = ['unsupported', 'partial', 'works'] as const
+    return order
+      .map((status) => ({
+        status,
+        items: findings.filter((f) => f.status === status)
+      }))
+      .filter((g) => g.items.length > 0)
+  }, [findings])
+
+  if (!findings.length) {
+    return <span className="sub">No compatibility findings</span>
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      {groups.map((g) => (
+        <details key={g.status} open={g.status !== 'works'}>
+          <summary className="sub" style={{ cursor: 'pointer' }}>
+            {g.status} ({g.items.length})
+          </summary>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            {g.items.map((f, i) => (
+              <li key={`${f.code}-${f.line}-${i}`} className="sub">
+                L{f.line ?? '?'} [{f.construct}] {f.message}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </div>
+  )
+}
+
 export function ScriptsPanel({
   scripts,
   onClose,
@@ -39,6 +78,7 @@ export function ScriptsPanel({
   const [trusted, setTrusted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   async function run(fn: () => Promise<void>): Promise<void> {
     setBusy(true)
@@ -62,9 +102,9 @@ export function ScriptsPanel({
       >
         <h2>Scripts</h2>
         <p className="sub">
-          Sandboxed mIRC-style subset with Phase 6 import diagnostics. Imports are{' '}
-          <strong>untrusted</strong> until you grant capabilities. Unsupported constructs are
-          reported (never silently ignored). Not full mIRC/NNScript compatibility.
+          Sandboxed mIRC-style subset with import diagnostics. Imports are <strong>untrusted</strong>{' '}
+          until you grant capabilities. Unsupported constructs are reported (never silently ignored).
+          Not full mIRC/NNScript compatibility — see COMPATIBILITY.md.
         </p>
 
         {error ? (
@@ -114,110 +154,121 @@ export function ScriptsPanel({
             </div>
           ) : (
             <ul>
-              {scripts.map((s) => (
-                <li key={s.id}>
-                  <div style={{ padding: 10, display: 'grid', gap: 6 }}>
-                    <strong>
-                      {s.filename}{' '}
-                      <span className="sub">
-                        [{s.status}] aliases={s.aliasCount} events={s.eventCount} menus=
-                        {s.menuCount}
-                        {s.trusted ? ' trusted' : ' untrusted'}
-                      </span>
-                    </strong>
-                    {s.diagnostics ? (
-                      <span className="sub">
-                        Compat: {s.diagnostics.summary}
-                        {s.diagnostics.findings
-                          .filter((f) => f.status !== 'works')
-                          .slice(0, 5)
-                          .map((f) => ` · L${f.line ?? '?'}: ${f.message}`)
-                          .join('')}
-                      </span>
-                    ) : null}
-                    {s.parseErrors.length ? (
-                      <span className="sub" style={{ color: 'var(--danger, #e66)' }}>
-                        Parse: {s.parseErrors.map((e) => `L${e.line}: ${e.message}`).join('; ')}
-                      </span>
-                    ) : null}
-                    {s.execErrors.length ? (
-                      <span className="sub" style={{ color: 'var(--danger, #e66)' }}>
-                        Exec: {s.execErrors.slice(-3).join('; ')}
-                      </span>
-                    ) : null}
-                    <span className="sub">Caps: {s.permissions.join(', ') || '(none)'}</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {s.enabled ? (
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={busy}
-                          onClick={() => void run(() => onDisable(s.id))}
-                        >
-                          Disable
-                        </button>
-                      ) : (
-                        <>
+              {scripts.map((s) => {
+                const open = expandedId === s.id
+                return (
+                  <li key={s.id}>
+                    <div style={{ padding: 10, display: 'grid', gap: 6 }}>
+                      <strong>
+                        {s.filename}{' '}
+                        <span className="sub">
+                          [{s.status}] aliases={s.aliasCount} events={s.eventCount} menus=
+                          {s.menuCount}
+                          {s.trusted ? ' trusted' : ' untrusted'}
+                          {s.enabled ? ' · enabled' : ' · disabled'}
+                        </span>
+                      </strong>
+                      {s.diagnostics ? (
+                        <span className="sub">
+                          Compat summary: {s.diagnostics.summary}
+                          {s.diagnostics.hasBlockingUnsupported
+                            ? ' · blocking unsupported (force enable after review)'
+                            : ''}
+                        </span>
+                      ) : null}
+                      {s.parseErrors.length ? (
+                        <span className="sub" style={{ color: 'var(--danger, #e66)' }}>
+                          Parse: {s.parseErrors.map((e) => `L${e.line}: ${e.message}`).join('; ')}
+                        </span>
+                      ) : null}
+                      {s.execErrors.length ? (
+                        <span className="sub" style={{ color: 'var(--danger, #e66)' }}>
+                          Exec: {s.execErrors.slice(-5).join('; ')}
+                        </span>
+                      ) : null}
+                      <span className="sub">Caps: {s.permissions.join(', ') || '(none)'}</span>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busy || !s.diagnostics?.findings.length}
+                        onClick={() => setExpandedId(open ? null : s.id)}
+                      >
+                        {open ? 'Hide diagnostics' : 'Show diagnostics'}
+                      </button>
+                      {open && s.diagnostics ? (
+                        <FindingList findings={s.diagnostics.findings} />
+                      ) : null}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {s.enabled ? (
                           <button
                             type="button"
                             className="btn"
-                            disabled={busy || s.parseErrors.length > 0}
-                            onClick={() => void run(() => onEnable(s.id))}
+                            disabled={busy}
+                            onClick={() => void run(() => onDisable(s.id))}
                           >
-                            Enable
+                            Disable
                           </button>
-                          {s.diagnostics?.hasBlockingUnsupported ? (
+                        ) : (
+                          <>
                             <button
                               type="button"
                               className="btn"
                               disabled={busy || s.parseErrors.length > 0}
-                              title="Enable despite unsupported features (after review)"
-                              onClick={() => void run(() => onEnable(s.id, true))}
+                              onClick={() => void run(() => onEnable(s.id))}
                             >
-                              Force enable
+                              Enable
                             </button>
-                          ) : null}
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={busy}
-                        onClick={() => void run(() => onReload(s.id))}
-                      >
-                        Reload
-                      </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={busy}
-                        onClick={() => void run(() => onUnload(s.id))}
-                      >
-                        Unload
-                      </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={busy}
-                        title="Grant echo + irc + network + timer"
-                        onClick={() =>
-                          void run(() => onPermissions(s.id, [...GRANTABLE]))
-                        }
-                      >
-                        Grant IRC caps
-                      </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={busy}
-                        onClick={() => void run(() => onPermissions(s.id, ['ui.echo']))}
-                      >
-                        Echo only
-                      </button>
+                            {s.diagnostics?.hasBlockingUnsupported ? (
+                              <button
+                                type="button"
+                                className="btn"
+                                disabled={busy || s.parseErrors.length > 0}
+                                title="Enable despite unsupported features (after review)"
+                                onClick={() => void run(() => onEnable(s.id, true))}
+                              >
+                                Force enable
+                              </button>
+                            ) : null}
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => void run(() => onReload(s.id))}
+                        >
+                          Reload
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => void run(() => onUnload(s.id))}
+                        >
+                          Unload
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          title="Grant echo + irc + network + timer"
+                          onClick={() => void run(() => onPermissions(s.id, [...GRANTABLE]))}
+                        >
+                          Grant IRC caps
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => void run(() => onPermissions(s.id, ['ui.echo']))}
+                        >
+                          Echo only
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>

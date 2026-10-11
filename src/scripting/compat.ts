@@ -379,11 +379,25 @@ export const COMPAT_CATALOG: ReadonlyArray<{
   notes: string
 }> = [
   { construct: 'alias { }', status: 'works', notes: 'Named aliases; nested alias calls' },
-  { construct: 'on LEVEL:EVENT:…', status: 'partial', notes: 'TEXT/JOIN/PART/QUIT/NOTICE/CONNECT/DISCONNECT; pattern match subset' },
+  {
+    construct: 'on LEVEL:EVENT:…',
+    status: 'partial',
+    notes:
+      'TEXT/ACTION/JOIN/PART/QUIT/NOTICE/NICK/KICK/TOPIC/MODE/CONNECT/DISCONNECT; pattern match subset'
+  },
   { construct: 'raw N:…', status: 'partial', notes: 'Numeric handlers; match subset' },
   { construct: 'if / else / while', status: 'works', notes: 'Parenthesized tests; iteration capped' },
   { construct: 'var %x / inc / dec', status: 'works', notes: 'Script-local/global %vars' },
-  { construct: '$nick $chan $1 $1- $*', status: 'partial', notes: 'Common idents; many mIRC idents missing' },
+  {
+    construct: '$nick $chan $me $network $1 $1- $*',
+    status: 'partial',
+    notes: 'Common idents; many mIRC idents still missing'
+  },
+  {
+    construct: '$upper $lower $len $left $right $mid $replace $pos $ctime $asctime',
+    status: 'works',
+    notes: 'Safe string/time helpers (single-pair $replace)'
+  },
   { construct: 'echo / timer', status: 'works', notes: 'Permission-gated' },
   { construct: 'msg join part nick …', status: 'works', notes: 'Requires irc.command + network.send grants' },
   { construct: 'menu <target> { }', status: 'partial', notes: 'Parsed scaffold; no full popup engine / $menu' },

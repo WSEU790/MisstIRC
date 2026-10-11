@@ -183,6 +183,12 @@ function registerIpc(): void {
     manager.respondDcc(offerId, accept)
   )
 
+  ipcMain.handle('misstirc:cancelDcc', (_e, offerId: string) => manager.cancelDcc(offerId))
+
+  ipcMain.handle('misstirc:forceDccReceive', (_e, offerId: string) =>
+    manager.forceDccReceive(offerId)
+  )
+
   ipcMain.handle('misstirc:listScripts', (): ScriptRecordView[] => manager.listScripts())
 
   ipcMain.handle(
@@ -336,6 +342,7 @@ app.whenReady().then(async () => {
   db = new AppDatabase(userDataDbPath())
   secrets = await createSecretStore(app.getPath('userData'))
   logger = new ChatLogger(join(app.getPath('userData'), 'logs'))
+  manager.setDccDownloadDir(join(app.getPath('userData'), 'downloads'))
   scripts = new ScriptManager(join(app.getPath('userData'), 'scripts'), {
     echo: (id, text) => manager.scriptEcho(id, text),
     sendCommand: (id, line) => manager.scriptSendCommand(id, line)

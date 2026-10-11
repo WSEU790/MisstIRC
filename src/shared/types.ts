@@ -249,7 +249,17 @@ export interface WhoisInfo {
   raw: string[]
 }
 
-export type DccOfferStatus = 'pending' | 'accepted' | 'rejected' | 'blocked' | 'unsupported'
+export type DccOfferStatus =
+  | 'pending'
+  | 'accepted'
+  | 'transferring'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'rejected'
+  | 'blocked'
+  /** @deprecated kept for older UI strings; prefer failed/accepted */
+  | 'unsupported'
 
 export interface DccOfferView {
   id: string
@@ -261,9 +271,13 @@ export interface DccOfferView {
   address?: string
   port?: number
   status: DccOfferStatus
-  /** NAT/firewall limitation note */
+  /** NAT/firewall limitation note / progress detail */
   note: string
   createdAt: number
+  /** Bytes written so far (includes resume offset) */
+  bytesReceived?: number
+  /** Safe absolute path under the downloads dir (never auto-executed) */
+  localPath?: string
 }
 
 export type MainToRendererEvent =
@@ -290,6 +304,8 @@ export interface MisstIrcApi {
   searchLogs: (query: string, limit?: number) => Promise<LogSearchHit[]>
   getCompletions: (connectionId: string, buffer: string, prefix: string) => Promise<string[]>
   respondDcc: (offerId: string, accept: boolean) => Promise<void>
+  cancelDcc: (offerId: string) => Promise<void>
+  forceDccReceive: (offerId: string) => Promise<void>
   listScripts: () => Promise<ScriptRecordView[]>
   importScript: (
     name: string,

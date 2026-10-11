@@ -263,7 +263,11 @@ export function App(): React.JSX.Element {
           onDisconnect={() => void handleDisconnect()}
           canDisconnect={Boolean(activeConnection)}
           canChannels={Boolean(activeConnection && activeConnection.state === 'connected')}
-          dccCount={state.dccOffers.filter((o) => o.status === 'pending').length}
+          dccCount={
+            state.dccOffers.filter((o) =>
+              ['pending', 'accepted', 'transferring'].includes(o.status)
+            ).length
+          }
           scriptCount={state.scripts.filter((s) => s.enabled).length}
         />
       ) : null}
@@ -406,6 +410,8 @@ export function App(): React.JSX.Element {
           offers={state.dccOffers}
           onClose={() => setShowDcc(false)}
           onRespond={(id, accept) => void window.misstirc.respondDcc(id, accept)}
+          onCancel={(id) => void window.misstirc.cancelDcc(id)}
+          onForceReceive={(id) => void window.misstirc.forceDccReceive(id)}
         />
       ) : null}
 
