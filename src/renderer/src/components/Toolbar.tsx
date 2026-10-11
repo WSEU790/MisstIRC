@@ -4,6 +4,7 @@ interface Props {
   onSearch: () => void
   onDcc: () => void
   onScripts: () => void
+  onCustomize: () => void
   onDisconnect: () => void
   canDisconnect: boolean
   canChannels: boolean
@@ -17,6 +18,7 @@ export function Toolbar({
   onSearch,
   onDcc,
   onScripts,
+  onCustomize,
   onDisconnect,
   canDisconnect,
   canChannels,
@@ -46,6 +48,9 @@ export function Toolbar({
         </button>
         <button type="button" className="btn" onClick={onScripts}>
           Scripts{scriptCount ? ` (${scriptCount})` : ''}
+        </button>
+        <button type="button" className="btn" onClick={onCustomize}>
+          Customize
         </button>
         <button
           type="button"

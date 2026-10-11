@@ -13,6 +13,8 @@ import type {
   UnfinishedFeature,
   WhoisInfo
 } from '@shared/types'
+import { defaultAppSettings } from '../shared/defaults'
+import { mergeNotificationPrefs, shouldNotify, type NotifyKind } from '../shared/notifications'
 import { DCC_LIMITATIONS, DccManager } from '../dcc'
 import type { ScriptManager } from '../scripting'
 import type { ChatLogger } from '../services/logging'
@@ -27,9 +29,8 @@ import { isOpLike, parseChannelEntry } from './prefixes'
 const UNFINISHED: UnfinishedFeature[] = [
   {
     id: 'mirc-scripting',
-    label: 'mIRC / NNScript scripting',
-    detail:
-      'Phase 5 foundation: AST parser + sandboxed runtime. Not full mIRC/NNScript compatibility; DLLs unsupported.'
+    label: 'mIRC / NNScript drop-in',
+    detail: 'Subset + diagnostics only — not full mIRC/NNScript; DLLs unsupported.'
   },
   {
     id: 'dcc',
@@ -54,13 +55,7 @@ export class ConnectionManager extends EventEmitter {
   /** Connection used when scripts issue /commands */
   private scriptTargetConnectionId: string | null = null
   activeBufferKey: string | null = null
-  settings: AppSettings = {
-    theme: 'misstirc-dark',
-    showStatusBar: true,
-    fontSize: 14,
-    loggingEnabled: true,
-    notificationsEnabled: true
-  }
+  settings: AppSettings = defaultAppSettings()
 
   setLogger(logger: ChatLogger | null): void {
     this.logger = logger
@@ -565,6 +560,7 @@ export class ConnectionManager extends EventEmitter {
     conn.on('error', (err) => this.emit('error', { message: err.message }))
     conn.on('close', () => {
       this.scripts?.dispatch({ event: 'DISCONNECT', nick: conn.nick })
+      this.notifyDisconnect(conn.id, conn.network.name)
       this.emitConnection(conn)
     })
     conn.on('perform', () => {
@@ -636,7 +632,9 @@ export class ConnectionManager extends EventEmitter {
         return
       }
       this.emitMessage(view)
-      if (view.highlighted && this.settings.notificationsEnabled) {
+      const isPm = view.kind === 'privmsg' && !view.target.startsWith('#') && !view.target.startsWith('&')
+      const kind: NotifyKind = view.highlighted ? 'highlight' : isPm ? 'private' : 'other'
+      if ((view.highlighted || isPm) && this.allowNotify(kind, view.connectionId, view.target)) {
         this.emit('notify', {
           title: `${view.nick ?? 'IRC'} on ${view.target}`,
           body: view.text.slice(0, 180)
@@ -980,6 +978,25 @@ export class ConnectionManager extends EventEmitter {
     const conn = this.connections.get(connectionId)
     if (!conn) throw new Error(`Unknown connection ${connectionId}`)
     return conn
+  }
+
+  private allowNotify(kind: NotifyKind, connectionId: string, target: string): boolean {
+    const prefs = mergeNotificationPrefs(
+      this.settings.notifications,
+      this.settings.notificationsEnabled
+    )
+    const focused =
+      (this.activeBufferKey ?? '').toLowerCase() === bufferKey(connectionId, target).toLowerCase()
+    return shouldNotify(prefs, kind, { bufferFocused: focused })
+  }
+
+  /** Emit connection-loss notifications when prefs allow. */
+  notifyDisconnect(connectionId: string, networkName: string): void {
+    if (!this.allowNotify('disconnect', connectionId, '*')) return
+    this.emit('notify', {
+      title: 'Disconnected',
+      body: `${networkName} connection lost`
+    })
   }
 
   private emitState(): void {

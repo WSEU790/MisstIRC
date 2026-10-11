@@ -790,3 +790,70 @@ textarea {
     grid-template-columns: 52px 80px 1fr;
   }
 }
+
+/* Phase 7 layout toggles */
+html.layout-hide-nav .workspace {
+  grid-template-columns: 1fr var(--nicks-w);
+}
+html.layout-hide-nicks .workspace {
+  grid-template-columns: var(--nav-w) 1fr;
+}
+html.layout-hide-nav.layout-hide-nicks .workspace {
+  grid-template-columns: 1fr;
+}
+html.layout-hide-toolbar .toolbar {
+  display: none;
+}
+html.layout-hide-status .status-bar {
+  display: none;
+}
+
+.tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 14px;
+}
+
+.customize-modal {
+  max-height: min(86vh, 820px);
+  overflow: auto;
+}
+
+.customize-section {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.theme-preview {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.code-box {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px;
+  resize: vertical;
+}
+
+.menu-visual {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.field.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

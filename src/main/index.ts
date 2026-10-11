@@ -2,8 +2,15 @@ import { app, BrowserWindow, ipcMain, shell, session, Notification } from 'elect
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ConnectionManager } from '../core/manager'
+import { BackupStore } from '../services/backups'
+import { validateAllCustomMenus } from '../services/custom-menus'
 import { ChatLogger } from '../services/logging'
 import { ScriptManager } from '../scripting'
+import {
+  buildConfigExport,
+  parseConfigImport
+} from '../shared/config-export'
+import { normalizeAppSettings } from '../shared/defaults'
 import { AppDatabase } from '../storage/database'
 import {
   createSecretStore,
@@ -12,8 +19,10 @@ import {
   type SecretStore
 } from '../storage/secrets'
 import type {
+  AppSettings,
   AppStateSnapshot,
   ConnectRequest,
+  CustomMenuDef,
   LogSearchHit,
   MainToRendererEvent,
   NetworkConfig,
@@ -27,6 +36,7 @@ let db: AppDatabase
 let secrets: SecretStore
 let logger: ChatLogger
 let scripts: ScriptManager
+let backups: BackupStore
 const manager = new ConnectionManager()
 
 function userDataDbPath(): string {
@@ -222,6 +232,75 @@ function registerIpc(): void {
       emitScripts()
     }
   )
+
+  ipcMain.handle('misstirc:getSettings', (): AppSettings => normalizeAppSettings(db.getSettings()))
+
+  ipcMain.handle('misstirc:saveSettings', (_e, settings: AppSettings): AppSettings => {
+    const normalized = normalizeAppSettings(settings)
+    db.saveSettings(normalized)
+    manager.settings = normalized
+    send({ type: 'state', payload: manager.getSnapshot() })
+    return normalized
+  })
+
+  ipcMain.handle('misstirc:exportConfig', (): string => {
+    const bundle = buildConfigExport(db.getSettings(), db.listNetworks())
+    return JSON.stringify(bundle, null, 2)
+  })
+
+  ipcMain.handle(
+    'misstirc:importConfig',
+    (_e, json: string): { networks: number; settings: AppSettings } => {
+      let raw: unknown
+      try {
+        raw = JSON.parse(json)
+      } catch {
+        throw new Error('Invalid JSON')
+      }
+      const parsed = parseConfigImport(raw)
+      if (!parsed.ok) throw new Error(parsed.error)
+      const settings = normalizeAppSettings(parsed.bundle.settings)
+      db.saveSettings(settings)
+      manager.settings = settings
+      for (const n of parsed.bundle.networks) {
+        const id = n.id || randomUUID()
+        db.saveNetwork({ ...n, id, hasPassword: false })
+      }
+      send({ type: 'state', payload: manager.getSnapshot() })
+      return { networks: parsed.bundle.networks.length, settings }
+    }
+  )
+
+  ipcMain.handle('misstirc:listBackups', () => backups.list())
+
+  ipcMain.handle('misstirc:createBackup', (_e, label?: string) =>
+    backups.create(db.getSettings(), db.listNetworks(), label)
+  )
+
+  ipcMain.handle(
+    'misstirc:restoreBackup',
+    (_e, id: string): { networks: number; settings: AppSettings } => {
+      const bundle = backups.read(id)
+      if (!bundle) throw new Error('Backup not found')
+      const settings = normalizeAppSettings(bundle.settings)
+      db.saveSettings(settings)
+      manager.settings = settings
+      for (const n of bundle.networks) {
+        const nid = n.id || randomUUID()
+        db.saveNetwork({ ...n, id: nid, hasPassword: false })
+      }
+      send({ type: 'state', payload: manager.getSnapshot() })
+      return { networks: bundle.networks.length, settings }
+    }
+  )
+
+  ipcMain.handle('misstirc:deleteBackup', (_e, id: string): void => {
+    backups.delete(id)
+  })
+
+  ipcMain.handle('misstirc:validateCustomMenus', (_e, menus: CustomMenuDef[]) =>
+    validateAllCustomMenus(menus)
+  )
 }
 
 function wireManager(): void {
@@ -260,6 +339,7 @@ app.whenReady().then(async () => {
   })
   scripts.loadFromDisk()
   manager.setScriptManager(scripts)
+  backups = new BackupStore(join(app.getPath('userData'), 'backups'))
   manager.settings = db.getSettings()
   manager.setLogger(logger)
 

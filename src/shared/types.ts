@@ -1,3 +1,17 @@
+import type { ThemeId, ThemeTokenMap } from './themes'
+import type { LayoutSettings } from './layout'
+import type { ShortcutBinding } from './shortcuts'
+import type { NotificationPrefs } from './notifications'
+import type { CustomMenuDef } from './custom-menus'
+import type { ProfileBackupMeta } from './config-export'
+
+export type { ThemeId, ThemeTokenMap } from './themes'
+export type { LayoutSettings } from './layout'
+export type { ShortcutBinding, ShortcutAction } from './shortcuts'
+export type { NotificationPrefs, NotifyKind } from './notifications'
+export type { CustomMenuDef } from './custom-menus'
+export type { ConfigExportBundle, ProfileBackupMeta } from './config-export'
+
 export type ConnectionState =
   | 'disconnected'
   | 'connecting'
@@ -121,11 +135,18 @@ export interface ConnectionSnapshot {
 }
 
 export interface AppSettings {
-  theme: 'misstirc-dark'
+  theme: ThemeId
+  /** Optional token overrides on top of the built-in theme */
+  themeOverrides?: Partial<ThemeTokenMap>
   showStatusBar: boolean
   fontSize: number
   loggingEnabled: boolean
+  /** Legacy mirror of notifications.enabled */
   notificationsEnabled: boolean
+  layout: LayoutSettings
+  shortcuts: ShortcutBinding[]
+  notifications: NotificationPrefs
+  customMenus: CustomMenuDef[]
 }
 
 export type ScriptPermissionName =
@@ -281,5 +302,16 @@ export interface MisstIrcApi {
   reloadScript: (id: string) => Promise<ScriptRecordView | null>
   unloadScript: (id: string) => Promise<void>
   setScriptPermissions: (id: string, permissions: ScriptPermissionName[]) => Promise<void>
+  getSettings: () => Promise<AppSettings>
+  saveSettings: (settings: AppSettings) => Promise<AppSettings>
+  exportConfig: () => Promise<string>
+  importConfig: (json: string) => Promise<{ networks: number; settings: AppSettings }>
+  listBackups: () => Promise<ProfileBackupMeta[]>
+  createBackup: (label?: string) => Promise<ProfileBackupMeta>
+  restoreBackup: (id: string) => Promise<{ networks: number; settings: AppSettings }>
+  deleteBackup: (id: string) => Promise<void>
+  validateCustomMenus: (
+    menus: CustomMenuDef[]
+  ) => Promise<{ ok: boolean; errors: { id: string; messages: string[] }[] }>
   onEvent: (handler: (event: MainToRendererEvent) => void) => () => void
 }

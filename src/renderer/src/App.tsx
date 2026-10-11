@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
+  AppSettings,
   AppStateSnapshot,
   IrcMessageView,
   LogSearchHit,
   NetworkConfig,
   WhoisInfo
 } from '../../shared/types'
+import { defaultAppSettings, normalizeAppSettings } from '../../shared/defaults'
+import { applyLayoutToElement, clampLayout } from '../../shared/layout'
+import {
+  findActionForKey,
+  mergeShortcuts,
+  shortcutFromKeyboardEvent
+} from '../../shared/shortcuts'
+import { applyThemeToElement, resolveThemeTokens } from '../../shared/themes'
 import { ChannelDialog } from './components/ChannelDialog'
 import { Conversation } from './components/Conversation'
+import { CustomizePanel } from './components/CustomizePanel'
 import { DccPanel } from './components/DccPanel'
 import { NavTree } from './components/NavTree'
 import { NickList } from './components/NickList'
@@ -20,13 +30,7 @@ import { Toolbar } from './components/Toolbar'
 const emptyState: AppStateSnapshot = {
   connections: [],
   activeBufferKey: null,
-  settings: {
-    theme: 'misstirc-dark',
-    showStatusBar: true,
-    fontSize: 14,
-    loggingEnabled: true,
-    notificationsEnabled: true
-  },
+  settings: defaultAppSettings(),
   unfinished: [],
   dccOffers: [],
   scripts: []
@@ -39,6 +43,16 @@ function parseBufferKey(key: string | null): { connectionId: string; name: strin
   return { connectionId: key.slice(0, idx), name: key.slice(idx + 1) }
 }
 
+function applyAppearance(settings: AppSettings): void {
+  const root = document.documentElement
+  const tokens = resolveThemeTokens(settings.theme, settings.themeOverrides)
+  applyThemeToElement(root, tokens)
+  const layout = clampLayout(settings.layout)
+  applyLayoutToElement(root, layout)
+  root.style.setProperty('--font-size-app', `${settings.fontSize}px`)
+  document.body.style.fontSize = `${settings.fontSize}px`
+}
+
 export function App(): React.JSX.Element {
   const [state, setState] = useState<AppStateSnapshot>(emptyState)
   const [messages, setMessages] = useState<IrcMessageView[]>([])
@@ -47,11 +61,18 @@ export function App(): React.JSX.Element {
   const [showSearch, setShowSearch] = useState(false)
   const [showDcc, setShowDcc] = useState(false)
   const [showScripts, setShowScripts] = useState(false)
+  const [showCustomize, setShowCustomize] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [whois, setWhois] = useState<WhoisInfo | null>(null)
   const [networks, setNetworks] = useState<NetworkConfig[]>([])
   const apiReady = typeof window !== 'undefined' && Boolean(window.misstirc)
   const messagesRef = useRef<IrcMessageView[]>([])
+  const settingsRef = useRef(state.settings)
+
+  useEffect(() => {
+    settingsRef.current = state.settings
+    applyAppearance(normalizeAppSettings(state.settings))
+  }, [state.settings])
 
   useEffect(() => {
     if (!apiReady) return
@@ -87,7 +108,6 @@ export function App(): React.JSX.Element {
           setState((prev) => ({ ...prev, scripts: event.payload }))
         }
         if (event.type === 'notify') {
-          /* OS notification also raised from main; keep a light in-app hint */
           setError(`Notify: ${event.payload.title} — ${event.payload.body}`)
         }
       })
@@ -95,6 +115,71 @@ export function App(): React.JSX.Element {
 
     return () => unsub()
   }, [apiReady])
+
+  useEffect(() => {
+    if (!apiReady) return
+
+    const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) {
+        // Allow customize / search chords even in inputs
+        const chord = shortcutFromKeyboardEvent(e)
+        if (!chord) return
+        const action = findActionForKey(mergeShortcuts(settingsRef.current.shortcuts), chord)
+        if (action !== 'open-customize' && action !== 'open-search' && action !== 'open-servers') {
+          return
+        }
+      }
+      const chord = shortcutFromKeyboardEvent(e)
+      if (!chord) return
+      const action = findActionForKey(mergeShortcuts(settingsRef.current.shortcuts), chord)
+      if (!action) return
+      e.preventDefault()
+      switch (action) {
+        case 'open-servers':
+          setShowServers(true)
+          break
+        case 'open-channels':
+          setShowChannels(true)
+          break
+        case 'open-search':
+          setShowSearch(true)
+          break
+        case 'open-scripts':
+          setShowScripts(true)
+          break
+        case 'open-customize':
+          setShowCustomize(true)
+          break
+        case 'toggle-nav':
+          void persistLayoutPatch({ showNav: !settingsRef.current.layout.showNav })
+          break
+        case 'toggle-nicks':
+          void persistLayoutPatch({ showNickList: !settingsRef.current.layout.showNickList })
+          break
+        case 'focus-input':
+          document.querySelector<HTMLInputElement>('.composer input')?.focus()
+          break
+        case 'next-unread': {
+          const hit = state.connections
+            .flatMap((c) => c.buffers.map((b) => ({ c, b })))
+            .find(({ b }) => (b.unread ?? 0) > 0)
+          if (hit) void selectBuffer(hit.c.id, hit.b.name)
+          break
+        }
+        case 'disconnect':
+          void handleDisconnect()
+          break
+        default:
+          break
+      }
+    }
+
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handlers use latest via refs/state reads
+  }, [apiReady, state.connections])
 
   const active = parseBufferKey(state.activeBufferKey)
   const activeConnection = state.connections.find((c) => c.id === active?.connectionId)
@@ -113,6 +198,16 @@ export function App(): React.JSX.Element {
 
   async function refreshNetworks(): Promise<void> {
     setNetworks(await window.misstirc.listNetworks())
+  }
+
+  async function persistLayoutPatch(patch: Partial<AppSettings['layout']>): Promise<void> {
+    const next = normalizeAppSettings({
+      ...settingsRef.current,
+      layout: { ...settingsRef.current.layout, ...patch },
+      showStatusBar: patch.showStatusBar ?? settingsRef.current.layout.showStatusBar
+    })
+    const saved = await window.misstirc.saveSettings(next)
+    setState((prev) => ({ ...prev, settings: saved }))
   }
 
   async function handleConnect(network: NetworkConfig, password?: string): Promise<void> {
@@ -150,20 +245,25 @@ export function App(): React.JSX.Element {
     )
   }
 
+  const layout = clampLayout(state.settings.layout)
+
   return (
     <div className="app">
-      <Toolbar
-        onServers={() => setShowServers(true)}
-        onChannels={() => setShowChannels(true)}
-        onSearch={() => setShowSearch(true)}
-        onDcc={() => setShowDcc(true)}
-        onScripts={() => setShowScripts(true)}
-        onDisconnect={() => void handleDisconnect()}
-        canDisconnect={Boolean(activeConnection)}
-        canChannels={Boolean(activeConnection && activeConnection.state === 'connected')}
-        dccCount={state.dccOffers.filter((o) => o.status === 'pending').length}
-        scriptCount={state.scripts.filter((s) => s.enabled).length}
-      />
+      {layout.showToolbar ? (
+        <Toolbar
+          onServers={() => setShowServers(true)}
+          onChannels={() => setShowChannels(true)}
+          onSearch={() => setShowSearch(true)}
+          onDcc={() => setShowDcc(true)}
+          onScripts={() => setShowScripts(true)}
+          onCustomize={() => setShowCustomize(true)}
+          onDisconnect={() => void handleDisconnect()}
+          canDisconnect={Boolean(activeConnection)}
+          canChannels={Boolean(activeConnection && activeConnection.state === 'connected')}
+          dccCount={state.dccOffers.filter((o) => o.status === 'pending').length}
+          scriptCount={state.scripts.filter((s) => s.enabled).length}
+        />
+      ) : null}
 
       {error ? (
         <div className="error-banner" role="alert">
@@ -185,11 +285,13 @@ export function App(): React.JSX.Element {
       ) : null}
 
       <div className="workspace">
-        <NavTree
-          connections={state.connections}
-          activeKey={state.activeBufferKey}
-          onSelect={(cid, name) => void selectBuffer(cid, name)}
-        />
+        {layout.showNav ? (
+          <NavTree
+            connections={state.connections}
+            activeKey={state.activeBufferKey}
+            onSelect={(cid, name) => void selectBuffer(cid, name)}
+          />
+        ) : null}
 
         {activeConnection && active ? (
           <Conversation
@@ -220,26 +322,28 @@ export function App(): React.JSX.Element {
           </section>
         )}
 
-        <NickList
-          nicks={activeBuffer?.nicks ?? []}
-          selfIsOp={activeBuffer?.selfIsOp}
-          channel={activeBuffer?.type === 'channel' ? activeBuffer.name : undefined}
-          onWhois={(n) => void handleSend(`/whois ${n}`)}
-          onQuery={(n) => void handleSend(`/query ${n}`)}
-          onKick={(n) => void handleSend(`/kick ${n}`)}
-          onBan={(n) => void handleSend(`/ban ${n}`)}
-          onKickBan={(n) => void handleSend(`/kickban ${n}`)}
-          onOp={(n) => void handleSend(`/op ${n}`)}
-          onDeop={(n) => void handleSend(`/deop ${n}`)}
-          onVoice={(n) => void handleSend(`/voice ${n}`)}
-          onDevoice={(n) => void handleSend(`/devoice ${n}`)}
-        />
+        {layout.showNickList ? (
+          <NickList
+            nicks={activeBuffer?.nicks ?? []}
+            selfIsOp={activeBuffer?.selfIsOp}
+            channel={activeBuffer?.type === 'channel' ? activeBuffer.name : undefined}
+            onWhois={(n) => void handleSend(`/whois ${n}`)}
+            onQuery={(n) => void handleSend(`/query ${n}`)}
+            onKick={(n) => void handleSend(`/kick ${n}`)}
+            onBan={(n) => void handleSend(`/ban ${n}`)}
+            onKickBan={(n) => void handleSend(`/kickban ${n}`)}
+            onOp={(n) => void handleSend(`/op ${n}`)}
+            onDeop={(n) => void handleSend(`/deop ${n}`)}
+            onVoice={(n) => void handleSend(`/voice ${n}`)}
+            onDevoice={(n) => void handleSend(`/devoice ${n}`)}
+          />
+        ) : null}
       </div>
 
       <StatusBar
         connection={activeConnection}
         unfinished={state.unfinished}
-        show={state.settings.showStatusBar}
+        show={layout.showStatusBar}
       />
 
       {showServers ? (
@@ -323,6 +427,17 @@ export function App(): React.JSX.Element {
           }}
           onPermissions={async (id, permissions) => {
             await window.misstirc.setScriptPermissions(id, permissions)
+          }}
+        />
+      ) : null}
+
+      {showCustomize ? (
+        <CustomizePanel
+          settings={normalizeAppSettings(state.settings)}
+          onClose={() => setShowCustomize(false)}
+          onSave={async (settings) => {
+            const saved = await window.misstirc.saveSettings(settings)
+            setState((prev) => ({ ...prev, settings: saved }))
           }}
         />
       ) : null}

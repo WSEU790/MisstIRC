@@ -22,7 +22,8 @@ src/
   preload/      restricted API
   renderer/     React shell, components, themes
   core/         IRC connection, parser, CAP, manager
-  services/     profiles, (future: notify/log/settings)
+  services/     logging, backups, custom-menu validation
+  shared/       themes, shortcuts, layout, notifications, config-export
   scripting/    AST runtime + compat diagnostics + menu scaffold (Phase 5–6)
   dcc/          isolated offers/path validation (no transfer sockets yet)
   storage/      SQLite, migrations, secret store

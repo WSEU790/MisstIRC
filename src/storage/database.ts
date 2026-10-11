@@ -2,15 +2,8 @@ import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { AppSettings, NetworkConfig } from '@shared/types'
+import { normalizeAppSettings } from '../shared/defaults'
 import { MIGRATIONS } from './migrations'
-
-const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'misstirc-dark',
-  showStatusBar: true,
-  fontSize: 14,
-  loggingEnabled: true,
-  notificationsEnabled: true
-}
 
 type NetworkExtras = Pick<
   NetworkConfig,
@@ -151,17 +144,18 @@ export class AppDatabase {
     const row = this.db.prepare(`SELECT value_json FROM settings WHERE key = 'app'`).get() as
       | { value_json: string }
       | undefined
-    if (!row) return { ...DEFAULT_SETTINGS }
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(row.value_json) as AppSettings) }
+    if (!row) return normalizeAppSettings(null)
+    return normalizeAppSettings(JSON.parse(row.value_json) as Partial<AppSettings>)
   }
 
   saveSettings(settings: AppSettings): void {
+    const normalized = normalizeAppSettings(settings)
     this.db
       .prepare(
         `INSERT INTO settings (key, value_json) VALUES ('app', ?)
          ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json`
       )
-      .run(JSON.stringify(settings))
+      .run(JSON.stringify(normalized))
   }
 
   private migrate(): void {

@@ -64,9 +64,20 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | COMPATIBILITY.md matrix | Implemented and tested | Tied to fixtures |
 | Drop-in `.nns` / DLL host | Unsupported | License + security |
 
-## Phase 7–8
+## Phase 7 — Advanced customization
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Theme editor (dark/light/classic + tokens) | Implemented and tested | Import/export JSON |
+| Custom menus (visual + text, validated) | Partially implemented | App menus; script menus remain in Scripts |
+| Shortcut manager + conflict detection | Implemented and tested | Editing chords reserved |
+| Window layout manager | Implemented and tested | Resize/hide/restore defaults |
+| Advanced notifications | Implemented and tested | Focus suppress + categories |
+| Config import/export (no credentials) | Implemented and tested | Rejects password-bearing JSON |
+| Profile backups | Implemented and tested | userData/backups |
+
+## Phase 8
 
 | Feature | Status |
 |---------|--------|
-| Theme editor, layouts, backups | Planned |
-| Windows installer | Planned |
+| Windows installer / production polish | Planned |

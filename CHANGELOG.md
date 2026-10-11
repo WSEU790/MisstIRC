@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 — Phase 7 advanced customization
+
+### Added
+
+- Theme manager: dark / light / classic token sets, accent overrides, theme JSON import/export
+- Customize panel: layout resize/hide/restore defaults, shortcut editor with conflict detection
+- Custom menu visual + text editor with validation
+- Notification prefs (focus suppress, highlight/PM/disconnect/DCC/script categories)
+- Config import/export and profile backups — **credentials never included**
+
+### Not claimed
+
+- Full mIRC/NNScript drop-in, DCC transfer sockets, Windows installer
+
 ## 0.5.0 — Phase 6 legacy compatibility
 
 ### Added

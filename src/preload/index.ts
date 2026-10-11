@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  AppSettings,
   ConnectRequest,
+  CustomMenuDef,
   MainToRendererEvent,
   MisstIrcApi,
   NetworkConfig,
@@ -38,6 +40,16 @@ const api: MisstIrcApi = {
   setScriptPermissions: (id: string, permissions: ScriptPermissionName[]) =>
     ipcRenderer.invoke('misstirc:setScriptPermissions', id, permissions),
   listScriptMenus: (target?: string) => ipcRenderer.invoke('misstirc:listScriptMenus', target),
+  getSettings: () => ipcRenderer.invoke('misstirc:getSettings'),
+  saveSettings: (settings: AppSettings) => ipcRenderer.invoke('misstirc:saveSettings', settings),
+  exportConfig: () => ipcRenderer.invoke('misstirc:exportConfig'),
+  importConfig: (json: string) => ipcRenderer.invoke('misstirc:importConfig', json),
+  listBackups: () => ipcRenderer.invoke('misstirc:listBackups'),
+  createBackup: (label?: string) => ipcRenderer.invoke('misstirc:createBackup', label),
+  restoreBackup: (id: string) => ipcRenderer.invoke('misstirc:restoreBackup', id),
+  deleteBackup: (id: string) => ipcRenderer.invoke('misstirc:deleteBackup', id),
+  validateCustomMenus: (menus: CustomMenuDef[]) =>
+    ipcRenderer.invoke('misstirc:validateCustomMenus', menus),
   onEvent: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: MainToRendererEvent): void => {
       handler(payload)
