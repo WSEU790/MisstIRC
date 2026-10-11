@@ -13,6 +13,8 @@ export interface TransferParams {
   expectedSize?: number
   /** Max bytes to accept (safety) */
   maxBytes: number
+  /** Fail if TCP connect does not succeed in time */
+  connectTimeoutMs?: number
 }
 
 export interface TransferProgress {
@@ -30,6 +32,8 @@ export class DccReceiveTransfer extends EventEmitter {
   private socket: Socket | null = null
   private bytesReceived = 0
   private destroyed = false
+  private connectTimer: ReturnType<typeof setTimeout> | null = null
+  private connected = false
 
   constructor(private readonly params: TransferParams) {
     super()
@@ -48,7 +52,16 @@ export class DccReceiveTransfer extends EventEmitter {
     })
     this.bytesReceived = this.params.position
 
+    const timeoutMs = this.params.connectTimeoutMs ?? 15_000
+    this.connectTimer = setTimeout(() => {
+      if (!this.destroyed && !this.connected) {
+        this.fail(new Error(`Connect timed out after ${timeoutMs}ms`))
+      }
+    }, timeoutMs)
+
     socket.on('connect', () => {
+      this.connected = true
+      if (this.connectTimer) clearTimeout(this.connectTimer)
       this.emit('started', { id: this.params.id })
     })
 
@@ -90,6 +103,7 @@ export class DccReceiveTransfer extends EventEmitter {
   cancel(): void {
     if (this.destroyed) return
     this.destroyed = true
+    if (this.connectTimer) clearTimeout(this.connectTimer)
     this.socket?.destroy()
     this.emit('cancelled', { id: this.params.id, bytesReceived: this.bytesReceived })
   }
@@ -97,6 +111,7 @@ export class DccReceiveTransfer extends EventEmitter {
   private complete(stream: NodeJS.WritableStream): void {
     if (this.destroyed) return
     this.destroyed = true
+    if (this.connectTimer) clearTimeout(this.connectTimer)
     const finish = (): void => {
       this.socket?.end()
       this.emit('completed', {
@@ -111,6 +126,7 @@ export class DccReceiveTransfer extends EventEmitter {
   private fail(err: Error): void {
     if (this.destroyed) return
     this.destroyed = true
+    if (this.connectTimer) clearTimeout(this.connectTimer)
     this.socket?.destroy()
     this.emit('failed', { id: this.params.id, error: err.message, bytesReceived: this.bytesReceived })
   }

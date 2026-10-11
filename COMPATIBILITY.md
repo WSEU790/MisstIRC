@@ -76,7 +76,9 @@ These map **workflows**, not proprietary script code.
 | Protections / flood | script modules | Planned (app-level ignore exists) | unsupported* | *as NNS modules |
 | Themes `.nnt` | theme engine | CSS variables only | unsupported | license + Phase 7 editor |
 | Native DLLs | nnscript.dll, DCX/MDX | No DLL host | unsupported | `workflow-unsupported-dll.mrc` |
-| DCC helpers | scripts + relay | Classic SEND receive + RESUME/ACCEPT (local mocks); NAT not guaranteed | partial | `tests/dcc-transfer.test.ts` |
+| DCC helpers | scripts + relay | Classic SEND send+receive + RESUME/ACCEPT (local mocks); NAT not guaranteed | partial | `tests/dcc-transfer.test.ts` |
+| NOTICE / CONNECT banners | events | `on NOTICE` / `CONNECT` fixtures | works | `workflow-notice-echo.mrc`, `workflow-connect-banner.mrc` |
+| Ignore / flood prot modules | NNS prot | App `/ignore` only — not NNS modules | partial | `workflow-ignore-note.mrc` + ignore tests |
 
 \* “Unsupported” here means MisstIRC does **not** load NNScript protection modules; app-level ignore/highlights are separate.
 

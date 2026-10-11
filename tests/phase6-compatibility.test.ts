@@ -212,4 +212,23 @@ describe('Phase 6 ScriptManager import diagnostics', () => {
     expect(echoes.some((t) => /topic by op/i.test(t))).toBe(true)
     expect(echoes.some((t) => /nick change old to new/i.test(t))).toBe(true)
   })
+
+  it('notice / connect / ignore-note fixtures stay non-blocking', () => {
+    const echoes: string[] = []
+    const d = mkdtempSync(join(tmpdir(), 'misst-p6-more-'))
+    dirs.push(d)
+    const m = new ScriptManager(d, {
+      echo: (_id, t) => echoes.push(t),
+      sendCommand: () => undefined
+    })
+    expect(m.importSource('n.mrc', load('workflow-notice-echo.mrc')).enabled).toBe(true)
+    expect(m.importSource('c.mrc', load('workflow-connect-banner.mrc')).enabled).toBe(true)
+    expect(m.importSource('i.mrc', load('workflow-ignore-note.mrc')).enabled).toBe(true)
+    m.dispatch({ event: 'NOTICE', nick: 'NickServ', text: 'This nickname is registered', me: 'u', network: 'N' })
+    m.dispatch({ event: 'CONNECT', me: 'u', network: 'N', nick: 'u' })
+    expect(m.tryAlias('/ignorehelp')).toBe(true)
+    expect(echoes.some((t) => /notice from NickServ/i.test(t))).toBe(true)
+    expect(echoes.some((t) => /connected as u/i.test(t))).toBe(true)
+    expect(echoes.some((t) => /slash ignore/i.test(t))).toBe(true)
+  })
 })

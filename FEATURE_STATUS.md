@@ -23,7 +23,9 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 
 | Feature | Status |
 |---------|--------|
-| Server/channel managers, nick modes, WHOIS/kick/ban, formatting, history/completion, unread, search/logging | Implemented and tested / incompletely tested (UI manual) |
+| Server/channel managers, nick modes, WHOIS/kick/ban, formatting, history/completion, unread | Implemented and tested / incompletely tested (UI manual) |
+| Log search UX (filters, prefixes, empty/loading) | Implemented and tested | `kind:`/`target:`/`nick:`; UI filters |
+| Ignore list (`/ignore`, `-list`, `-r`, channel/kind scope) | Implemented and tested | Session rules; save network to persist |
 
 ## Phase 4 — Advanced IRC
 
@@ -32,7 +34,7 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | IRCv3 caps (account-*, away-notify, chghost, batch, labeled-response, multi-prefix, server-time, message-tags, SASL) | Implemented and tested | Negotiated; batch tracked |
 | ISUPPORT (005) | Implemented and tested | |
 | CTCP VERSION/TIME/PING/ACTION + flood prefs | Implemented and tested | |
-| DCC SEND receive + RESUME/ACCEPT + progress/cancel/queue | Implemented and tested (local/direct) | Mock peer tests; **NAT/firewall not guaranteed**; no outbound SEND; never auto-exec |
+| DCC SEND send+receive + RESUME/ACCEPT + progress/cancel/queue | Implemented and tested (local/direct) | Outbound binds localhost; **NAT not guaranteed**; never auto-exec |
 | Ignore rules | Implemented and tested | |
 | Highlights + notification engine | Implemented but incompletely tested | Main-process Notification |
 | Automation (perform, aliases, auto-away, alt nicks) | Implemented and tested | Runaway alias guard; no secret perform |

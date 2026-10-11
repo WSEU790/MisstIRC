@@ -53,19 +53,15 @@ export class ChatLogger {
   }
 
   search(query: string, limit = 50): LogSearchHit[] {
-    const q = query.trim().toLowerCase()
-    if (!q) return []
+    const parsed = parseSearchQuery(query)
+    if (!parsed.text && !parsed.kind && !parsed.target && !parsed.nick) return []
 
-    const fromMemory = this.memory.filter(
-      (h) =>
-        h.text.toLowerCase().includes(q) ||
-        (h.nick?.toLowerCase().includes(q) ?? false) ||
-        h.target.toLowerCase().includes(q)
-    )
+    const fromMemory = this.memory.filter((h) => matchesParsed(h, parsed))
+    // Newest first for UI polish
+    fromMemory.sort((a, b) => b.timestamp - a.timestamp)
+    if (fromMemory.length >= limit) return fromMemory.slice(0, limit)
 
-    if (fromMemory.length >= limit) return fromMemory.slice(-limit)
-
-    const fromDisk = this.searchDisk(q, limit - fromMemory.length)
+    const fromDisk = this.searchDisk(parsed, limit - fromMemory.length)
     const seen = new Set(fromMemory.map((h) => `${h.timestamp}:${h.target}:${h.text}`))
     for (const hit of fromDisk) {
       const key = `${hit.timestamp}:${hit.target}:${hit.text}`
@@ -74,10 +70,11 @@ export class ChatLogger {
         seen.add(key)
       }
     }
-    return fromMemory.slice(-limit)
+    fromMemory.sort((a, b) => b.timestamp - a.timestamp)
+    return fromMemory.slice(0, limit)
   }
 
-  private searchDisk(q: string, limit: number): LogSearchHit[] {
+  private searchDisk(parsed: ParsedQuery, limit: number): LogSearchHit[] {
     if (!existsSync(this.dir) || limit <= 0) return []
     const files = readdirSync(this.dir)
       .filter((f) => f.endsWith('.log'))
@@ -99,10 +96,8 @@ export class ChatLogger {
             kind: MessageKind
             text: string
           }
-          const blob = `${row.text} ${row.nick} ${row.target}`.toLowerCase()
-          if (!blob.includes(q)) continue
           if (redactForLog(row.text) === null) continue
-          hits.push({
+          const hit: LogSearchHit = {
             id: `disk-${file}-${hits.length}`,
             connectionId: '',
             networkName,
@@ -111,7 +106,9 @@ export class ChatLogger {
             text: row.text,
             timestamp: row.t,
             kind: row.kind
-          })
+          }
+          if (!matchesParsed(hit, parsed)) continue
+          hits.push(hit)
         } catch {
           /* skip corrupt lines */
         }
@@ -119,6 +116,44 @@ export class ChatLogger {
     }
     return hits
   }
+}
+
+export interface ParsedQuery {
+  text: string
+  kind?: string
+  target?: string
+  nick?: string
+}
+
+/** Parse `kind:privmsg target:#lobby nick:alice hello` style queries. */
+export function parseSearchQuery(raw: string): ParsedQuery {
+  let rest = raw.trim()
+  const out: ParsedQuery = { text: '' }
+  const re = /^(kind|target|nick):(\S+)\s*/i
+  while (true) {
+    const m = re.exec(rest)
+    if (!m) break
+    const key = m[1]!.toLowerCase()
+    const val = m[2]!
+    if (key === 'kind') out.kind = val.toLowerCase()
+    if (key === 'target') out.target = val.toLowerCase()
+    if (key === 'nick') out.nick = val.toLowerCase()
+    rest = rest.slice(m[0].length)
+  }
+  out.text = rest.trim().toLowerCase()
+  return out
+}
+
+function matchesParsed(h: LogSearchHit, q: ParsedQuery): boolean {
+  if (q.kind && h.kind.toLowerCase() !== q.kind) return false
+  if (q.target && !h.target.toLowerCase().includes(q.target)) return false
+  if (q.nick && !(h.nick?.toLowerCase().includes(q.nick) ?? false)) return false
+  if (!q.text) return true
+  return (
+    h.text.toLowerCase().includes(q.text) ||
+    (h.nick?.toLowerCase().includes(q.text) ?? false) ||
+    h.target.toLowerCase().includes(q.text)
+  )
 }
 
 function sanitize(name: string): string {

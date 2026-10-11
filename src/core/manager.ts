@@ -21,7 +21,7 @@ import { MESSAGE_INDEX_MAX } from '../shared/limits'
 import { mergeNotificationPrefs, shouldNotify, type NotifyKind } from '../shared/notifications'
 import { DCC_LIMITATIONS, DccManager } from '../dcc'
 import type { ScriptManager } from '../scripting'
-import type { ChatLogger } from '../services/logging'
+import { parseSearchQuery, type ChatLogger } from '../services/logging'
 import { expandAlias } from './aliases'
 import { IrcConnection } from './connection'
 import { parseCtcp } from './ctcp'
@@ -195,6 +195,19 @@ export class ConnectionManager extends EventEmitter {
     return offer
   }
 
+  async offerDccSend(
+    connectionId: string,
+    peerNick: string,
+    filePath: string
+  ): Promise<DccOfferView> {
+    this.require(connectionId)
+    const offer = await this.dcc.offerSend({ connectionId, peerNick, filePath })
+    this.flushDccOutbound()
+    this.emit('dcc', offer)
+    this.emitState()
+    return offer
+  }
+
   private flushDccOutbound(): void {
     for (const line of this.dcc.takeOutbound()) {
       const conn = this.connections.get(line.connectionId)
@@ -260,16 +273,21 @@ export class ConnectionManager extends EventEmitter {
   }
 
   searchLogs(query: string, limit = 50): LogSearchHit[] {
-    const q = query.trim().toLowerCase()
-    if (!q) return []
+    const parsed = parseSearchQuery(query)
+    if (!parsed.text && !parsed.kind && !parsed.target && !parsed.nick) return []
+
     const fromLive = this.messageIndex
-      .filter(
-        (m) =>
-          m.text.toLowerCase().includes(q) ||
-          (m.nick?.toLowerCase().includes(q) ?? false) ||
-          m.target.toLowerCase().includes(q)
-      )
-      .slice(-limit)
+      .filter((m) => {
+        if (parsed.kind && m.kind.toLowerCase() !== parsed.kind) return false
+        if (parsed.target && !m.target.toLowerCase().includes(parsed.target)) return false
+        if (parsed.nick && !(m.nick?.toLowerCase().includes(parsed.nick) ?? false)) return false
+        if (!parsed.text) return true
+        return (
+          m.text.toLowerCase().includes(parsed.text) ||
+          (m.nick?.toLowerCase().includes(parsed.text) ?? false) ||
+          m.target.toLowerCase().includes(parsed.text)
+        )
+      })
       .map((m) => {
         const conn = this.connections.get(m.connectionId)
         return {
@@ -283,13 +301,16 @@ export class ConnectionManager extends EventEmitter {
           kind: m.kind
         } satisfies LogSearchHit
       })
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, limit)
+
     if (!this.logger) return fromLive
     const merged: LogSearchHit[] = [...fromLive]
     const seen = new Set(fromLive.map((h) => h.id))
     for (const hit of this.logger.search(query, limit)) {
       if (!seen.has(hit.id)) merged.push(hit)
     }
-    return merged.slice(-limit)
+    return merged.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit)
   }
 
   getCompletions(connectionId: string, buffer: string, prefix: string): string[] {
@@ -472,10 +493,54 @@ export class ConnectionManager extends EventEmitter {
         break
       }
       case 'ignore': {
-        // Runtime-only add: /ignore mask
-        const mask = args.split(/\s+/)[0]
-        if (!mask) return
+        // /ignore [-list] | [-r mask] | [mask]  — session rules; save network to persist
+        const tokens = args.split(/\s+/).filter(Boolean)
+        if (!tokens.length || tokens[0] === '-list') {
+          const rules = conn.network.ignoreRules ?? []
+          const text = rules.length
+            ? rules.map((r) => `${r.enabled ? '' : '(off) '}${r.mask}`).join(', ')
+            : '(none)'
+          this.emitMessage({
+            id: `${conn.id}-${++this.messageSeq}`,
+            connectionId: conn.id,
+            target: '*',
+            kind: 'system',
+            text: `Ignore list: ${text}`,
+            timestamp: Date.now()
+          })
+          break
+        }
+        if (tokens[0] === '-r' || tokens[0] === '-remove') {
+          const mask = tokens[1]
+          if (!mask) return
+          const before = conn.network.ignoreRules ?? []
+          conn.network.ignoreRules = before.filter(
+            (r) => r.mask.toLowerCase() !== mask.toLowerCase()
+          )
+          this.emitMessage({
+            id: `${conn.id}-${++this.messageSeq}`,
+            connectionId: conn.id,
+            target: '*',
+            kind: 'system',
+            text: `Removed ignore ${mask}`,
+            timestamp: Date.now()
+          })
+          this.emitState()
+          break
+        }
+        const mask = tokens[0]!
         const rules = conn.network.ignoreRules ?? []
+        if (rules.some((r) => r.mask.toLowerCase() === mask.toLowerCase())) {
+          this.emitMessage({
+            id: `${conn.id}-${++this.messageSeq}`,
+            connectionId: conn.id,
+            target: '*',
+            kind: 'system',
+            text: `Already ignoring ${mask}`,
+            timestamp: Date.now()
+          })
+          break
+        }
         rules.push({
           id: `ign_${Date.now()}`,
           mask,
@@ -493,6 +558,7 @@ export class ConnectionManager extends EventEmitter {
           text: `Ignoring ${mask} (session; save network to persist)`,
           timestamp: Date.now()
         })
+        this.emitState()
         break
       }
       case 'away':

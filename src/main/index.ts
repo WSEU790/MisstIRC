@@ -189,6 +189,12 @@ function registerIpc(): void {
     manager.forceDccReceive(offerId)
   )
 
+  ipcMain.handle(
+    'misstirc:offerDccSend',
+    (_e, connectionId: string, peerNick: string, filePath: string) =>
+      manager.offerDccSend(connectionId, peerNick, filePath)
+  )
+
   ipcMain.handle('misstirc:listScripts', (): ScriptRecordView[] => manager.listScripts())
 
   ipcMain.handle(

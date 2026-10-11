@@ -408,10 +408,14 @@ export function App(): React.JSX.Element {
       {showDcc ? (
         <DccPanel
           offers={state.dccOffers}
+          activeConnectionId={activeConnection?.id ?? null}
           onClose={() => setShowDcc(false)}
           onRespond={(id, accept) => void window.misstirc.respondDcc(id, accept)}
           onCancel={(id) => void window.misstirc.cancelDcc(id)}
           onForceReceive={(id) => void window.misstirc.forceDccReceive(id)}
+          onOfferSend={async (connectionId, peerNick, filePath) => {
+            await window.misstirc.offerDccSend(connectionId, peerNick, filePath)
+          }}
         />
       ) : null}
 

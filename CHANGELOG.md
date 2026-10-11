@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.0 — Outbound DCC, search/ignore polish, more fixtures
+
+### Added
+
+- **Outbound DCC SEND** (localhost bind) with RESUME→ACCEPT; mock receiver tests
+- Receive connect timeout; direction field on transfer views; Send UI in DCC panel
+- Search UX: empty/loading/error states, kind filters, match highlight; query prefixes `kind:` / `target:` / `nick:`
+- `/ignore -list` and `/ignore -r`; channel-scoped ignore edge-case tests
+- Compatibility fixtures: notice-echo, connect-banner, ignore-note
+
+### Limits (honest)
+
+- Outbound SEND binds local/direct peers only — NAT not claimed
+- Still no full mIRC/NNScript drop-in; no signed installer
+
 ## 0.8.0 — DCC transfers, scripting depth, packaging harden
 
 ### Added

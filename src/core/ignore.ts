@@ -27,13 +27,20 @@ export function matchesIgnore(
   const mask = hostmask(opts.nick, opts.user, opts.host)
   for (const rule of rules) {
     if (!rule.enabled) continue
-    if (rule.channel && opts.channel && rule.channel.toLowerCase() !== opts.channel.toLowerCase()) {
-      continue
+    // Channel-scoped: only apply when the message channel matches; skip PMs when scoped
+    if (rule.channel) {
+      if (!opts.channel) continue
+      if (rule.channel.toLowerCase() !== opts.channel.toLowerCase()) continue
     }
     if (opts.kind === 'privmsg' && rule.privmsg === false) continue
     if (opts.kind === 'notice' && rule.notice === false) continue
     if (opts.kind === 'ctcp' && rule.ctcp === false) continue
-    if (maskToRegExp(rule.mask).test(mask) || maskToRegExp(rule.mask).test(opts.nick ?? '')) {
+    // Bare nick, nick!user@host, or *!*@host style
+    if (
+      maskToRegExp(rule.mask).test(mask) ||
+      maskToRegExp(rule.mask).test(opts.nick ?? '') ||
+      (rule.mask.includes('!') && maskToRegExp(rule.mask).test(mask))
+    ) {
       return true
     }
   }

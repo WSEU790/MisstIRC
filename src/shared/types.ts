@@ -274,10 +274,12 @@ export interface DccOfferView {
   /** NAT/firewall limitation note / progress detail */
   note: string
   createdAt: number
-  /** Bytes written so far (includes resume offset) */
+  /** Bytes written/sent so far (includes resume offset) */
   bytesReceived?: number
   /** Safe absolute path under the downloads dir (never auto-executed) */
   localPath?: string
+  /** inbound = peer offered SEND; outbound = we are sending */
+  direction?: 'inbound' | 'outbound'
 }
 
 export type MainToRendererEvent =
@@ -306,6 +308,7 @@ export interface MisstIrcApi {
   respondDcc: (offerId: string, accept: boolean) => Promise<void>
   cancelDcc: (offerId: string) => Promise<void>
   forceDccReceive: (offerId: string) => Promise<void>
+  offerDccSend: (connectionId: string, peerNick: string, filePath: string) => Promise<DccOfferView>
   listScripts: () => Promise<ScriptRecordView[]>
   importScript: (
     name: string,

@@ -11,6 +11,7 @@ import {
   dccAddressToHost,
   ipv4ToDccNumber,
   startMockDccSend,
+  mockDccReceive,
   DCC_MAX_QUEUE
 } from '../src/dcc'
 
@@ -233,5 +234,67 @@ describe('DCC SEND receive (mock peer)', () => {
     const mgr = new DccManager(downloadDir())
     const offer = mgr.ingestCtcp('c1', 'eve', 'SEND x.txt 2130706433 9 1')!
     expect(mgr.respond(offer.id, false)?.status).toBe('rejected')
+  })
+})
+
+describe('DCC outbound SEND', () => {
+  it('listens and delivers file to a mock receiver', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'misstirc-dcc-out-'))
+    const dir = defaultTestDownloadDir(base)
+    const src = join(base, 'out.bin')
+    const payload = Buffer.from('outbound-payload-ok')
+    writeFileSync(src, payload)
+
+    const mgr = new DccManager(dir)
+    const offer = await mgr.offerSend({
+      connectionId: 'c1',
+      peerNick: 'bob',
+      filePath: src,
+      bindHost: '127.0.0.1'
+    })
+    expect(offer.direction).toBe('outbound')
+    expect(offer.status).toBe('accepted')
+    const ctcp = mgr.takeOutbound()
+    expect(ctcp[0]!.ctcp).toMatch(/^SEND out\.bin /)
+
+    const done = new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('outbound timeout')), 5000)
+      mgr.on('update', (o) => {
+        if (o.id === offer.id && o.status === 'completed') {
+          clearTimeout(t)
+          resolve()
+        }
+        if (o.id === offer.id && o.status === 'failed') {
+          clearTimeout(t)
+          reject(new Error(o.note))
+        }
+      })
+    })
+
+    const recv = await mockDccReceive({
+      host: '127.0.0.1',
+      port: offer.port!,
+      expectedSize: payload.length
+    })
+    await done
+    expect(recv.data).toEqual(payload)
+  })
+
+  it('outbound RESUME sends ACCEPT CTCP', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'misstirc-dcc-ores-'))
+    const dir = defaultTestDownloadDir(base)
+    const src = join(base, 'big.bin')
+    writeFileSync(src, Buffer.from('ABCDEFGH'))
+    const mgr = new DccManager(dir)
+    const offer = await mgr.offerSend({
+      connectionId: 'c1',
+      peerNick: 'bob',
+      filePath: src
+    })
+    mgr.takeOutbound() // clear SEND CTCP
+    const updated = mgr.ingestCtcp('c1', 'bob', `RESUME big.bin ${offer.port} 4`)
+    expect(updated?.note).toMatch(/RESUME/i)
+    const out = mgr.takeOutbound()
+    expect(out[0]!.ctcp).toBe(`ACCEPT big.bin ${offer.port} 4`)
   })
 })
