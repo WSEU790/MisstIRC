@@ -64,6 +64,9 @@ Custom engine (evaluated vs wrapping a third-party client; chose custom for CAP/
 
 DCC transfers remain limited (offers only). Windows installer deferred. Status bar lists unfinished features.
 
-## Packaging
+## Packaging (Phase 8)
 
-electron-builder targeted for Windows x64 in Phase 8 — not enabled until build/launch smoke is reliable.
+- `electron-builder.yml` — Windows x64 NSIS + dir; scripts `pack:dir` / `pack:win:dir` / `pack:win`
+- Output under `release/` (gitignored)
+- **Installer not distributed** until smoke checklist in `TESTING.md` is green (§26 rule 11)
+- See `RELEASE.md`, `PERFORMANCE.md`, `SECURITY.md`

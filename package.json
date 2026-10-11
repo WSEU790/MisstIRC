@@ -1,6 +1,6 @@
 {
   "name": "misstirc",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "MisstIRC — a professional Windows IRC client",
   "main": "./out/main/index.js",
   "author": "MisstIRC",
@@ -14,7 +14,10 @@
     "test": "npm rebuild better-sqlite3 && vitest run",
     "test:watch": "vitest",
     "rebuild:electron": "electron-builder install-app-deps",
-    "postinstall": "npm rebuild better-sqlite3"
+    "postinstall": "npm rebuild better-sqlite3",
+    "pack:dir": "npm run build && electron-builder --dir",
+    "pack:win:dir": "npm run build && electron-builder --win --x64 --dir",
+    "pack:win": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",

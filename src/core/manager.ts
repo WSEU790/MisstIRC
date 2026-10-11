@@ -14,6 +14,7 @@ import type {
   WhoisInfo
 } from '@shared/types'
 import { defaultAppSettings } from '../shared/defaults'
+import { MESSAGE_INDEX_MAX } from '../shared/limits'
 import { mergeNotificationPrefs, shouldNotify, type NotifyKind } from '../shared/notifications'
 import { DCC_LIMITATIONS, DccManager } from '../dcc'
 import type { ScriptManager } from '../scripting'
@@ -40,7 +41,8 @@ const UNFINISHED: UnfinishedFeature[] = [
   {
     id: 'installer',
     label: 'Windows installer',
-    detail: 'Deferred until the app builds and launches reliably.'
+    detail:
+      'Packaging config ready (electron-builder); installer not shipped until Windows smoke tests pass.'
   }
 ]
 
@@ -1010,8 +1012,8 @@ export class ConnectionManager extends EventEmitter {
 
   private emitMessage(msg: IrcMessageView): void {
     this.messageIndex.push(msg)
-    if (this.messageIndex.length > 5000) {
-      this.messageIndex.splice(0, this.messageIndex.length - 5000)
+    if (this.messageIndex.length > MESSAGE_INDEX_MAX) {
+      this.messageIndex.splice(0, this.messageIndex.length - MESSAGE_INDEX_MAX)
     }
     const key = bufferKey(msg.connectionId, msg.target)
     if (this.activeBufferKey !== key && msg.kind !== 'system') {

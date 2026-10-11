@@ -8,6 +8,7 @@ import type {
   WhoisInfo
 } from '../../shared/types'
 import { defaultAppSettings, normalizeAppSettings } from '../../shared/defaults'
+import { RENDERER_MESSAGE_MAX } from '../../shared/limits'
 import { applyLayoutToElement, clampLayout } from '../../shared/layout'
 import {
   findActionForKey,
@@ -93,7 +94,9 @@ export function App(): React.JSX.Element {
           }))
         }
         if (event.type === 'message') {
-          messagesRef.current = [...messagesRef.current, event.payload].slice(-2000)
+          messagesRef.current = [...messagesRef.current, event.payload].slice(
+            -RENDERER_MESSAGE_MAX
+          )
           setMessages(messagesRef.current)
         }
         if (event.type === 'error') setError(event.payload.message)

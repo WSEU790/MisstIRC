@@ -40,7 +40,17 @@ npm run typecheck
 npm run build
 ```
 
-Output lands in `out/`. Windows installer packaging via electron-builder is deferred until launch reliability is proven.
+Output lands in `out/`.
+
+### Packaging (Phase 8 prep)
+
+```bash
+npm run pack:dir        # unpacked app for this OS → release/
+npm run pack:win:dir    # Windows x64 unpacked dry-run
+npm run pack:win        # NSIS — do not ship until smoke tests pass
+```
+
+See `RELEASE.md`. Installer distribution is gated on the Windows smoke checklist (§26 rule 11).
 
 ## Connect
 

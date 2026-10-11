@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0 — Phase 8 production readiness (packaging prep)
+
+### Added
+
+- `electron-builder.yml` — Windows x64 NSIS + dir targets; `pack:dir` / `pack:win:dir` / `pack:win` scripts
+- Documented performance bounds (`PERFORMANCE.md`, `src/shared/limits.ts`)
+- Main-process crash/rejection logging to `userData/logs/crash.log`
+- `RELEASE.md` — upgrade/uninstall + rule-11 installer gate
+- Expanded SECURITY.md Electron hardening checklist; TESTING.md crash/long-session guidance
+
+### Not shipped
+
+- **No public installer release** until Windows smoke checklist passes (§26 rule 11)
+- Code signing / auto-update still Planned
+
 ## 0.6.0 — Phase 7 advanced customization
 
 ### Added

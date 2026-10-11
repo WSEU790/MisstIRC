@@ -1,0 +1,48 @@
+# MisstIRC Windows packaging (Phase 8)
+# Acceptance rule 11: do NOT distribute an installer until build + smoke tests pass.
+# Prefer `npm run pack:win:dir` for a local unpacked dry-run before `pack:win`.
+
+appId: com.misstirc.app
+productName: MisstIRC
+copyright: Copyright © MisstIRC contributors
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+extraMetadata:
+  main: out/main/index.js
+
+asar: true
+
+# Native module: rebuild for Electron ABI via electron-builder install-app-deps
+npmRebuild: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: dir
+      arch:
+        - x64
+  # Optional: add build/icon.ico for branded installers
+  # icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MisstIRC
+  uninstallDisplayName: MisstIRC
+  deleteAppDataOnUninstall: false
+
+publish: null

@@ -76,8 +76,14 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | Config import/export (no credentials) | Implemented and tested | Rejects password-bearing JSON |
 | Profile backups | Implemented and tested | userData/backups |
 
-## Phase 8
+## Phase 8 — Production readiness
 
-| Feature | Status |
-|---------|--------|
-| Windows installer / production polish | Planned |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Performance bounds documented + constants | Implemented and tested | Caps already enforced; `PERFORMANCE.md` |
+| Security review (Electron checklist) | Implemented and tested | `SECURITY.md` Phase 8 section |
+| Crash hooks + recovery guidance | Partially implemented | Local `crash.log`; manual recovery steps in TESTING |
+| Long-session guidance | Implemented but incompletely tested | Documented soak procedure |
+| electron-builder Windows x64 config | Implemented but incompletely tested | Dry-run via `pack:dir`; **installer not shipped** |
+| Upgrade / uninstall docs | Implemented and tested | `RELEASE.md` / `DEVELOPMENT.md` |
+| Signed installer + smoke on Windows | Planned / Blocked | Needs Windows smoke + signing |

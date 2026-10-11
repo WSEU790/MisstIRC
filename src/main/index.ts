@@ -6,6 +6,7 @@ import { BackupStore } from '../services/backups'
 import { validateAllCustomMenus } from '../services/custom-menus'
 import { ChatLogger } from '../services/logging'
 import { ScriptManager } from '../scripting'
+import { installCrashHooks } from './crash'
 import {
   buildConfigExport,
   parseConfigImport
@@ -318,7 +319,9 @@ function wireManager(): void {
   })
 }
 
+// Install as early as practical once userData is available
 app.whenReady().then(async () => {
+  installCrashHooks(app.getPath('userData'))
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -352,9 +355,16 @@ app.whenReady().then(async () => {
   })
 })
 
+app.on('before-quit', () => {
+  try {
+    db?.close()
+  } catch {
+    /* ignore */
+  }
+})
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    db?.close()
     app.quit()
   }
 })
