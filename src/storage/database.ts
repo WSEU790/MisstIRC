@@ -8,7 +8,39 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'misstirc-dark',
   showStatusBar: true,
   fontSize: 14,
-  loggingEnabled: true
+  loggingEnabled: true,
+  notificationsEnabled: true
+}
+
+type NetworkExtras = Pick<
+  NetworkConfig,
+  | 'altNicks'
+  | 'perform'
+  | 'ignoreRules'
+  | 'highlights'
+  | 'aliases'
+  | 'autoAwayMinutes'
+  | 'autoAwayMessage'
+  | 'replyCtcpVersion'
+  | 'replyCtcpTime'
+  | 'replyCtcpPing'
+  | 'ctcpFloodLimit'
+>
+
+function extrasFromNetwork(network: NetworkConfig): NetworkExtras {
+  return {
+    altNicks: network.altNicks,
+    perform: network.perform,
+    ignoreRules: network.ignoreRules,
+    highlights: network.highlights,
+    aliases: network.aliases,
+    autoAwayMinutes: network.autoAwayMinutes,
+    autoAwayMessage: network.autoAwayMessage,
+    replyCtcpVersion: network.replyCtcpVersion,
+    replyCtcpTime: network.replyCtcpTime,
+    replyCtcpPing: network.replyCtcpPing,
+    ctcpFloodLimit: network.ctcpFloodLimit
+  }
 }
 
 export class AppDatabase {
@@ -29,7 +61,7 @@ export class AppDatabase {
     const rows = this.db
       .prepare(
         `SELECT id, name, host, port, tls, reject_unauthorized, nick, username, realname,
-                channels_json, auto_connect, has_password FROM networks ORDER BY name`
+                channels_json, auto_connect, has_password, extras_json FROM networks ORDER BY name`
       )
       .all() as Array<{
       id: string
@@ -44,22 +76,27 @@ export class AppDatabase {
       channels_json: string
       auto_connect: number
       has_password: number
+      extras_json: string
     }>
 
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      host: r.host,
-      port: r.port,
-      tls: !!r.tls,
-      rejectUnauthorized: !!r.reject_unauthorized,
-      nick: r.nick,
-      username: r.username,
-      realname: r.realname,
-      channels: JSON.parse(r.channels_json) as string[],
-      autoConnect: !!r.auto_connect,
-      hasPassword: !!r.has_password
-    }))
+    return rows.map((r) => {
+      const extras = JSON.parse(r.extras_json || '{}') as NetworkExtras
+      return {
+        id: r.id,
+        name: r.name,
+        host: r.host,
+        port: r.port,
+        tls: !!r.tls,
+        rejectUnauthorized: !!r.reject_unauthorized,
+        nick: r.nick,
+        username: r.username,
+        realname: r.realname,
+        channels: JSON.parse(r.channels_json) as string[],
+        autoConnect: !!r.auto_connect,
+        hasPassword: !!r.has_password,
+        ...extras
+      }
+    })
   }
 
   saveNetwork(network: NetworkConfig): void {
@@ -68,10 +105,10 @@ export class AppDatabase {
       .prepare(
         `INSERT INTO networks (
           id, name, host, port, tls, reject_unauthorized, nick, username, realname,
-          channels_json, auto_connect, has_password, created_at, updated_at
+          channels_json, auto_connect, has_password, extras_json, created_at, updated_at
         ) VALUES (
           @id, @name, @host, @port, @tls, @rejectUnauthorized, @nick, @username, @realname,
-          @channels, @autoConnect, @hasPassword, @now, @now
+          @channels, @autoConnect, @hasPassword, @extras, @now, @now
         )
         ON CONFLICT(id) DO UPDATE SET
           name=excluded.name,
@@ -85,6 +122,7 @@ export class AppDatabase {
           channels_json=excluded.channels_json,
           auto_connect=excluded.auto_connect,
           has_password=excluded.has_password,
+          extras_json=excluded.extras_json,
           updated_at=excluded.updated_at`
       )
       .run({
@@ -100,6 +138,7 @@ export class AppDatabase {
         channels: JSON.stringify(network.channels ?? []),
         autoConnect: network.autoConnect ? 1 : 0,
         hasPassword: network.hasPassword ? 1 : 0,
+        extras: JSON.stringify(extrasFromNetwork(network)),
         now
       })
   }

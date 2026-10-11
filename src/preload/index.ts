@@ -24,6 +24,8 @@ const api: MisstIrcApi = {
     ipcRenderer.invoke('misstirc:searchLogs', query, limit),
   getCompletions: (connectionId: string, buffer: string, prefix: string) =>
     ipcRenderer.invoke('misstirc:getCompletions', connectionId, buffer, prefix),
+  respondDcc: (offerId: string, accept: boolean) =>
+    ipcRenderer.invoke('misstirc:respondDcc', offerId, accept),
   onEvent: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: MainToRendererEvent): void => {
       handler(payload)

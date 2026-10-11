@@ -3,6 +3,15 @@ import * as net from 'node:net'
 import * as tls from 'node:tls'
 import { randomUUID } from 'node:crypto'
 import type { ConnectionState, NetworkConfig } from '@shared/types'
+import {
+  buildPingReply,
+  buildTimeReply,
+  buildVersionReply,
+  CtcpFloodGuard,
+  formatCtcp,
+  parseCtcp
+} from './ctcp'
+import { PRIORITY_CAPS, parseIsupportTokens } from './isupport'
 import { formatIrcLine, parseIrcLine, type ParsedIrcMessage } from './parser'
 import {
   applyNickMode,
@@ -27,6 +36,8 @@ export interface IrcConnectionOptions {
 export interface ChannelNick {
   nick: string
   modes: string
+  account?: string
+  away?: boolean
 }
 
 export interface ChannelState {
@@ -56,6 +67,8 @@ type ConnectionEvents = {
   error: [Error]
   close: []
   whois: [WhoisPending]
+  ctcp: [ParsedIrcMessage, ReturnType<typeof parseCtcp>]
+  perform: []
 }
 
 export class IrcConnection extends EventEmitter {
@@ -66,6 +79,9 @@ export class IrcConnection extends EventEmitter {
   channels = new Map<string, ChannelState>()
   queries = new Set<string>()
   lastError?: string
+  negotiatedCaps: string[] = []
+  isupport: Record<string, string> = {}
+  account: string | null = null
 
   private socket: net.Socket | null = null
   private buffer = ''
@@ -75,14 +91,19 @@ export class IrcConnection extends EventEmitter {
   private registered = false
   private capEnded = false
   private availableCaps = new Set<string>()
+  private enabledCaps = new Set<string>()
   private saslInProgress = false
   private reconnectAttempt = 0
   private reconnectTimer: NodeJS.Timeout | null = null
   private intentionalClose = false
   private pingTimer: NodeJS.Timeout | null = null
+  private awayTimer: NodeJS.Timeout | null = null
   private readonly maxLineLength = 8192
-  private readonly wantedCaps = ['sasl', 'server-time', 'message-tags', 'multi-prefix']
+  private readonly wantedCaps = [...PRIORITY_CAPS]
   private whoisPending = new Map<string, WhoisPending>()
+  private nickAttempt = 0
+  private openBatches = new Set<string>()
+  private ctcpGuard: CtcpFloodGuard
 
   constructor(options: IrcConnectionOptions) {
     super()
@@ -92,6 +113,7 @@ export class IrcConnection extends EventEmitter {
     this.password = options.password
     this.saslPassword = options.saslPassword
     this.createSocket = options.createSocket
+    this.ctcpGuard = new CtcpFloodGuard(options.network.ctcpFloodLimit ?? 5)
     this.on('error', () => undefined)
   }
 
@@ -116,6 +138,12 @@ export class IrcConnection extends EventEmitter {
     this.saslInProgress = false
     this.buffer = ''
     this.channels.clear()
+    this.negotiatedCaps = []
+    this.enabledCaps.clear()
+    this.isupport = {}
+    this.nickAttempt = 0
+    this.openBatches.clear()
+    this.stopAwayTimer()
 
     try {
       const socket = this.createSocket
@@ -173,6 +201,7 @@ export class IrcConnection extends EventEmitter {
       this.reconnectTimer = null
     }
     this.stopPingWatchdog()
+    this.stopAwayTimer()
     if (this.socket && !this.socket.destroyed) {
       try {
         this.sendRaw(formatIrcLine('QUIT', [quitMessage]))
@@ -227,6 +256,34 @@ export class IrcConnection extends EventEmitter {
     const key = nick.toLowerCase()
     this.whoisPending.set(key, { nick, lines: [] })
     this.sendRaw(formatIrcLine('WHOIS', [nick]))
+  }
+
+  /** Reply to inbound CTCP request if prefs + flood guard allow. */
+  handleInboundCtcp(msg: ParsedIrcMessage): void {
+    const text = msg.params[1] ?? ''
+    const ctcp = parseCtcp(text)
+    if (!ctcp || !msg.nick) return
+    this.emit('ctcp', msg, ctcp)
+    if (ctcp.type === 'ACTION' || ctcp.type === 'DCC') return
+    if (!this.ctcpGuard.allow()) return
+
+    const n = this.network
+    if (ctcp.type === 'VERSION' && n.replyCtcpVersion !== false) {
+      this.notice(msg.nick, buildVersionReply())
+    } else if (ctcp.type === 'TIME' && n.replyCtcpTime !== false) {
+      this.notice(msg.nick, buildTimeReply())
+    } else if (ctcp.type === 'PING' && n.replyCtcpPing !== false) {
+      this.notice(msg.nick, buildPingReply(ctcp.args))
+    }
+  }
+
+  sendCtcp(target: string, type: string, args = ''): void {
+    this.privmsg(target, formatCtcp(type, args))
+  }
+
+  setAway(message?: string): void {
+    if (message) this.sendRaw(formatIrcLine('AWAY', [message]))
+    else this.sendRaw('AWAY')
   }
 
   selfIsOp(channel: string): boolean {
@@ -317,11 +374,73 @@ export class IrcConnection extends EventEmitter {
         this.reconnectAttempt = 0
         this.setState('connected')
         this.emit('registered')
+        this.emit('perform')
         for (const entry of this.network.channels) {
           const { channel, key } = parseChannelEntry(entry)
           if (channel) this.join(channel, key)
         }
+        this.startAwayTimer()
         break
+      case '005': {
+        const tokens = msg.params.slice(1)
+        Object.assign(this.isupport, parseIsupportTokens(tokens))
+        break
+      }
+      case '433':
+      case '432': {
+        // Nickname in use / erroneous — try alternatives
+        const alts = this.network.altNicks ?? []
+        if (this.nickAttempt < alts.length) {
+          const next = alts[this.nickAttempt++]!
+          this.sendRaw(formatIrcLine('NICK', [next]))
+        } else {
+          const fallback = `${this.network.nick}_${Math.floor(Math.random() * 9000 + 1000)}`
+          this.sendRaw(formatIrcLine('NICK', [fallback]))
+        }
+        break
+      }
+      case 'ACCOUNT': {
+        const account = msg.params[0]
+        if (msg.nick) {
+          for (const ch of this.channels.values()) {
+            const entry = ch.nicks.get(msg.nick.toLowerCase())
+            if (entry) {
+              entry.account = account === '*' ? undefined : account
+            }
+          }
+          if (msg.nick.toLowerCase() === this.nick.toLowerCase()) {
+            this.account = account === '*' ? null : account ?? null
+          }
+        }
+        break
+      }
+      case 'AWAY': {
+        if (!msg.nick) break
+        const away = Boolean(msg.params[0])
+        for (const ch of this.channels.values()) {
+          const entry = ch.nicks.get(msg.nick.toLowerCase())
+          if (entry) entry.away = away
+        }
+        break
+      }
+      case 'CHGHOST': {
+        // host/user change — no nicklist structure change required beyond event
+        break
+      }
+      case 'BATCH': {
+        const ref = msg.params[0] ?? ''
+        if (ref.startsWith('+')) this.openBatches.add(ref.slice(1))
+        else if (ref.startsWith('-')) this.openBatches.delete(ref.slice(1))
+        break
+      }
+      case 'PRIVMSG':
+      case 'NOTICE': {
+        const text = msg.params[1] ?? ''
+        if (text.startsWith('\x01') && text.endsWith('\x01')) {
+          this.handleInboundCtcp(msg)
+        }
+        break
+      }
       case 'NICK': {
         const newNick = msg.params[0]
         if (!newNick || !msg.nick) break
@@ -343,7 +462,12 @@ export class IrcConnection extends EventEmitter {
       case 'JOIN': {
         const channel = msg.params[0]
         if (!channel || !msg.nick) break
-        this.setNick(channel, msg.nick, msg.nick.toLowerCase() === this.nick.toLowerCase() ? '' : '')
+        this.setNick(channel, msg.nick, '')
+        // extended-join: JOIN #chan account :realname
+        if (msg.params[1] && msg.params[1] !== '*') {
+          const entry = this.channels.get(channel.toLowerCase())?.nicks.get(msg.nick.toLowerCase())
+          if (entry) entry.account = msg.params[1]
+        }
         break
       }
       case 'PART': {
@@ -516,7 +640,11 @@ export class IrcConnection extends EventEmitter {
         else this.finishCap()
       }
     } else if (sub === 'ACK' || sub === 'NAK') {
-      const ack = (msg.params[msg.params.length - 1] ?? '').split(/\s+/)
+      const ack = (msg.params[msg.params.length - 1] ?? '').split(/\s+/).filter(Boolean)
+      if (sub === 'ACK') {
+        for (const c of ack) this.enabledCaps.add(c)
+        this.negotiatedCaps = [...this.enabledCaps]
+      }
       if (sub === 'ACK' && ack.includes('sasl') && this.saslPassword) {
         this.saslInProgress = true
         this.sendRaw(formatIrcLine('AUTHENTICATE', ['PLAIN']))
@@ -581,6 +709,26 @@ export class IrcConnection extends EventEmitter {
     if (this.pingTimer) {
       clearInterval(this.pingTimer)
       this.pingTimer = null
+    }
+  }
+
+  private startAwayTimer(): void {
+    this.stopAwayTimer()
+    const minutes = this.network.autoAwayMinutes
+    if (!minutes || minutes <= 0) return
+    this.awayTimer = setTimeout(() => {
+      try {
+        this.setAway(this.network.autoAwayMessage || 'Auto-away (MisstIRC)')
+      } catch {
+        /* ignore */
+      }
+    }, minutes * 60_000)
+  }
+
+  private stopAwayTimer(): void {
+    if (this.awayTimer) {
+      clearTimeout(this.awayTimer)
+      this.awayTimer = null
     }
   }
 

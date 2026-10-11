@@ -28,5 +28,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
         value_json TEXT NOT NULL
       );
     `
+  },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE networks ADD COLUMN extras_json TEXT NOT NULL DEFAULT '{}';
+    `
   }
 ]

@@ -6,6 +6,25 @@ export type ConnectionState =
   | 'reconnecting'
   | 'error'
 
+export interface IgnoreRule {
+  id: string
+  mask: string
+  /** Empty = all channels / PMs */
+  channel?: string
+  privmsg?: boolean
+  notice?: boolean
+  ctcp?: boolean
+  enabled: boolean
+}
+
+export interface AliasRule {
+  id: string
+  name: string
+  /** Expansion; $1..$n and $* supported */
+  expansion: string
+  enabled: boolean
+}
+
 export interface NetworkConfig {
   id: string
   name: string
@@ -14,10 +33,24 @@ export interface NetworkConfig {
   tls: boolean
   rejectUnauthorized: boolean
   nick: string
+  /** Tried in order if primary nick is taken */
+  altNicks?: string[]
   username: string
   realname: string
   /** Channel names; optional key as `"#chan key"` */
   channels: string[]
+  /** Lines to send after 001 (no secrets — use SASL/password fields) */
+  perform?: string[]
+  ignoreRules?: IgnoreRule[]
+  highlights?: string[]
+  aliases?: AliasRule[]
+  autoAwayMinutes?: number
+  autoAwayMessage?: string
+  replyCtcpVersion?: boolean
+  replyCtcpTime?: boolean
+  replyCtcpPing?: boolean
+  /** Max CTCP replies per 10s window */
+  ctcpFloodLimit?: number
   /** Presence of password only — never the secret itself */
   hasPassword?: boolean
   autoConnect?: boolean
@@ -41,6 +74,8 @@ export type MessageKind =
   | 'topic'
   | 'system'
   | 'error'
+  | 'ctcp'
+  | 'highlight'
   | 'raw'
 
 export interface IrcMessageView {
@@ -52,12 +87,16 @@ export interface IrcMessageView {
   text: string
   timestamp: number
   tags?: Record<string, string>
+  account?: string
+  ignored?: boolean
+  highlighted?: boolean
 }
 
 export interface NickEntry {
   nick: string
-  /** Prefix modes such as @ % + */
   modes: string
+  account?: string
+  away?: boolean
 }
 
 export interface BufferInfo {
@@ -67,7 +106,6 @@ export interface BufferInfo {
   topic?: string
   nicks?: NickEntry[]
   unread?: number
-  /** True when the local nick has op/halfop/owner/admin in this channel */
   selfIsOp?: boolean
 }
 
@@ -78,6 +116,8 @@ export interface ConnectionSnapshot {
   nick: string
   lastError?: string
   buffers: BufferInfo[]
+  caps?: string[]
+  isupport?: Record<string, string>
 }
 
 export interface AppSettings {
@@ -85,6 +125,7 @@ export interface AppSettings {
   showStatusBar: boolean
   fontSize: number
   loggingEnabled: boolean
+  notificationsEnabled: boolean
 }
 
 export interface AppStateSnapshot {
@@ -92,6 +133,7 @@ export interface AppStateSnapshot {
   activeBufferKey: string | null
   settings: AppSettings
   unfinished: UnfinishedFeature[]
+  dccOffers: DccOfferView[]
 }
 
 export interface UnfinishedFeature {
@@ -123,12 +165,31 @@ export interface WhoisInfo {
   raw: string[]
 }
 
+export type DccOfferStatus = 'pending' | 'accepted' | 'rejected' | 'blocked' | 'unsupported'
+
+export interface DccOfferView {
+  id: string
+  connectionId: string
+  peerNick: string
+  filename: string
+  safeFilename: string
+  size?: number
+  address?: string
+  port?: number
+  status: DccOfferStatus
+  /** NAT/firewall limitation note */
+  note: string
+  createdAt: number
+}
+
 export type MainToRendererEvent =
   | { type: 'state'; payload: AppStateSnapshot }
   | { type: 'message'; payload: IrcMessageView }
   | { type: 'connection'; payload: ConnectionSnapshot }
   | { type: 'error'; payload: { message: string } }
   | { type: 'whois'; payload: WhoisInfo }
+  | { type: 'notify'; payload: { title: string; body: string } }
+  | { type: 'dcc'; payload: DccOfferView }
 
 export interface MisstIrcApi {
   getState: () => Promise<AppStateSnapshot>
@@ -143,5 +204,6 @@ export interface MisstIrcApi {
   setActiveBuffer: (key: string | null) => Promise<void>
   searchLogs: (query: string, limit?: number) => Promise<LogSearchHit[]>
   getCompletions: (connectionId: string, buffer: string, prefix: string) => Promise<string[]>
+  respondDcc: (offerId: string, accept: boolean) => Promise<void>
   onEvent: (handler: (event: MainToRendererEvent) => void) => () => void
 }

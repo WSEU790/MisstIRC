@@ -2,18 +2,22 @@ interface Props {
   onServers: () => void
   onChannels: () => void
   onSearch: () => void
+  onDcc: () => void
   onDisconnect: () => void
   canDisconnect: boolean
   canChannels: boolean
+  dccCount?: number
 }
 
 export function Toolbar({
   onServers,
   onChannels,
   onSearch,
+  onDcc,
   onDisconnect,
   canDisconnect,
-  canChannels
+  canChannels,
+  dccCount = 0
 }: Props): React.JSX.Element {
   return (
     <header className="toolbar">
@@ -32,6 +36,9 @@ export function Toolbar({
         </button>
         <button type="button" className="btn" onClick={onSearch}>
           Search
+        </button>
+        <button type="button" className="btn" onClick={onDcc}>
+          DCC{dccCount ? ` (${dccCount})` : ''}
         </button>
         <button
           type="button"

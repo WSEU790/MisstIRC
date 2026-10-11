@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, session } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, session, Notification } from 'electron'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ConnectionManager } from '../core/manager'
@@ -158,6 +158,10 @@ function registerIpc(): void {
     (_e, connectionId: string, buffer: string, prefix: string): string[] =>
       manager.getCompletions(connectionId, buffer, prefix)
   )
+
+  ipcMain.handle('misstirc:respondDcc', (_e, offerId: string, accept: boolean) =>
+    manager.respondDcc(offerId, accept)
+  )
 }
 
 function wireManager(): void {
@@ -166,6 +170,13 @@ function wireManager(): void {
   manager.on('connection', (payload) => send({ type: 'connection', payload }))
   manager.on('error', (payload: { message: string }) => send({ type: 'error', payload }))
   manager.on('whois', (payload: WhoisInfo) => send({ type: 'whois', payload }))
+  manager.on('dcc', (payload) => send({ type: 'dcc', payload }))
+  manager.on('notify', (payload: { title: string; body: string }) => {
+    send({ type: 'notify', payload })
+    if (Notification.isSupported()) {
+      new Notification({ title: payload.title, body: payload.body }).show()
+    }
+  })
 }
 
 app.whenReady().then(async () => {

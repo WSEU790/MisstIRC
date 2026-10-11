@@ -5,14 +5,19 @@ import type {
   BufferInfo,
   ConnectRequest,
   ConnectionSnapshot,
+  DccOfferView,
   IrcMessageView,
   LogSearchHit,
   NetworkConfig,
   UnfinishedFeature,
   WhoisInfo
 } from '@shared/types'
+import { DCC_LIMITATIONS, DccManager } from '../dcc'
 import type { ChatLogger } from '../services/logging'
+import { expandAlias } from './aliases'
 import { IrcConnection } from './connection'
+import { parseCtcp } from './ctcp'
+import { matchesIgnore } from './ignore'
 import type { ParsedIrcMessage } from './parser'
 import { formatIrcLine } from './parser'
 import { isOpLike, parseChannelEntry } from './prefixes'
@@ -26,7 +31,7 @@ const UNFINISHED: UnfinishedFeature[] = [
   {
     id: 'dcc',
     label: 'DCC transfers',
-    detail: 'Isolated subsystem planned; SEND/GET/CHAT not available yet.'
+    detail: DCC_LIMITATIONS
   },
   {
     id: 'installer',
@@ -41,12 +46,14 @@ export class ConnectionManager extends EventEmitter {
   private unreads = new Map<string, number>()
   private messageIndex: IrcMessageView[] = []
   private logger: ChatLogger | null = null
+  private readonly dcc = new DccManager()
   activeBufferKey: string | null = null
   settings: AppSettings = {
     theme: 'misstirc-dark',
     showStatusBar: true,
     fontSize: 14,
-    loggingEnabled: true
+    loggingEnabled: true,
+    notificationsEnabled: true
   }
 
   setLogger(logger: ChatLogger | null): void {
@@ -58,7 +65,8 @@ export class ConnectionManager extends EventEmitter {
       connections: [...this.connections.values()].map((c) => this.toSnapshot(c)),
       activeBufferKey: this.activeBufferKey,
       settings: this.settings,
-      unfinished: UNFINISHED
+      unfinished: UNFINISHED,
+      dccOffers: this.dcc.list()
     }
   }
 
@@ -119,10 +127,31 @@ export class ConnectionManager extends EventEmitter {
     conn.sendRaw(line)
   }
 
+  respondDcc(offerId: string, accept: boolean): DccOfferView | null {
+    const offer = this.dcc.respond(offerId, accept)
+    if (offer) {
+      this.emit('dcc', offer)
+      this.emitState()
+    }
+    return offer
+  }
+
   sendInput(connectionId: string, buffer: string, text: string): void {
     const conn = this.require(connectionId)
-    const trimmed = text.trimEnd()
+    let trimmed = text.trimEnd()
     if (!trimmed) return
+
+    if (trimmed.startsWith('/')) {
+      try {
+        const expanded = expandAlias(trimmed, conn.network.aliases)
+        if (expanded) trimmed = expanded
+      } catch (err) {
+        this.emit('error', {
+          message: err instanceof Error ? err.message : String(err)
+        })
+        return
+      }
+    }
 
     if (trimmed.startsWith('/')) {
       this.handleSlash(conn, buffer, trimmed)
@@ -296,6 +325,99 @@ export class ConnectionManager extends EventEmitter {
         conn.mode(channel, '+b', mask)
         break
       }
+      case 'kickban':
+      case 'kb': {
+        const parts = args.split(/\s+/)
+        let channel = buffer
+        let nick = parts[0]
+        let reason = parts.slice(1).join(' ')
+        if (parts[0]?.startsWith('#') || parts[0]?.startsWith('&')) {
+          channel = parts[0]!
+          nick = parts[1]
+          reason = parts.slice(2).join(' ')
+        }
+        if (!channel || !nick) return
+        if (!conn.selfIsOp(channel)) {
+          this.emit('error', { message: `Cannot kickban: you are not an op on ${channel}` })
+          return
+        }
+        conn.mode(channel, '+b', `${nick}!*@*`)
+        conn.kick(channel, nick, reason || undefined)
+        break
+      }
+      case 'op':
+      case 'deop':
+      case 'voice':
+      case 'devoice':
+      case 'hop':
+      case 'dehop': {
+        const channel =
+          buffer.startsWith('#') || buffer.startsWith('&') ? buffer : args.split(/\s+/)[0]
+        const nick =
+          buffer.startsWith('#') || buffer.startsWith('&')
+            ? args.split(/\s+/)[0]
+            : args.split(/\s+/)[1]
+        if (!channel || !nick) return
+        if (!conn.selfIsOp(channel)) {
+          this.emit('error', { message: `Cannot ${cmd}: you are not an op on ${channel}` })
+          return
+        }
+        const mode =
+          cmd === 'op'
+            ? '+o'
+            : cmd === 'deop'
+              ? '-o'
+              : cmd === 'voice'
+                ? '+v'
+                : cmd === 'devoice'
+                  ? '-v'
+                  : cmd === 'hop'
+                    ? '+h'
+                    : '-h'
+        conn.mode(channel, mode, nick)
+        break
+      }
+      case 'ctcp': {
+        const sp = args.indexOf(' ')
+        if (sp === -1) return
+        const target = args.slice(0, sp)
+        const rest = args.slice(sp + 1)
+        const tsp = rest.indexOf(' ')
+        const type = (tsp === -1 ? rest : rest.slice(0, tsp)).toUpperCase()
+        const ctcpArgs = tsp === -1 ? '' : rest.slice(tsp + 1)
+        conn.sendCtcp(target, type, ctcpArgs)
+        break
+      }
+      case 'ignore': {
+        // Runtime-only add: /ignore mask
+        const mask = args.split(/\s+/)[0]
+        if (!mask) return
+        const rules = conn.network.ignoreRules ?? []
+        rules.push({
+          id: `ign_${Date.now()}`,
+          mask,
+          enabled: true,
+          privmsg: true,
+          notice: true,
+          ctcp: true
+        })
+        conn.network.ignoreRules = rules
+        this.emitMessage({
+          id: `${conn.id}-${++this.messageSeq}`,
+          connectionId: conn.id,
+          target: '*',
+          kind: 'system',
+          text: `Ignoring ${mask} (session; save network to persist)`,
+          timestamp: Date.now()
+        })
+        break
+      }
+      case 'away':
+        conn.setAway(args || undefined)
+        break
+      case 'back':
+        conn.setAway()
+        break
       case 'mode': {
         if (!args) return
         const [target, modes, ...rest] = args.split(/\s+/)
@@ -337,6 +459,42 @@ export class ConnectionManager extends EventEmitter {
     conn.on('message', (msg) => this.onIrcMessage(conn, msg))
     conn.on('error', (err) => this.emit('error', { message: err.message }))
     conn.on('close', () => this.emitConnection(conn))
+    conn.on('perform', () => {
+      for (const line of conn.network.perform ?? []) {
+        const trimmed = line.trim()
+        if (!trimmed || /pass|identify|authenticate/i.test(trimmed)) {
+          // Never auto-send credential-looking perform lines
+          continue
+        }
+        try {
+          if (trimmed.startsWith('/')) this.handleSlash(conn, '*', trimmed)
+          else conn.sendRaw(trimmed)
+        } catch (err) {
+          this.emit('error', {
+            message: err instanceof Error ? err.message : String(err)
+          })
+        }
+      }
+    })
+    conn.on('ctcp', (msg, ctcp) => {
+      if (!ctcp) return
+      if (ctcp.type === 'DCC' && msg.nick) {
+        const offer = this.dcc.ingestCtcp(conn.id, msg.nick, ctcp.args)
+        if (offer) {
+          this.emit('dcc', offer)
+          this.emitState()
+          this.emitMessage({
+            id: `${conn.id}-${++this.messageSeq}`,
+            connectionId: conn.id,
+            target: msg.nick,
+            kind: 'ctcp',
+            nick: msg.nick,
+            text: `DCC SEND offer: ${offer.safeFilename} (${offer.status}) — ${offer.note}`,
+            timestamp: Date.now()
+          })
+        }
+      }
+    })
     conn.on('whois', (info) => {
       const payload: WhoisInfo = {
         nick: info.nick,
@@ -363,11 +521,36 @@ export class ConnectionManager extends EventEmitter {
 
   private onIrcMessage(conn: IrcConnection, msg: ParsedIrcMessage): void {
     const view = this.toView(conn, msg)
-    if (view) this.emitMessage(view)
+    if (view) {
+      if (view.ignored) {
+        // Drop from UI/notifications but keep optional system note only when logging disabled path
+        return
+      }
+      this.emitMessage(view)
+      if (view.highlighted && this.settings.notificationsEnabled) {
+        this.emit('notify', {
+          title: `${view.nick ?? 'IRC'} on ${view.target}`,
+          body: view.text.slice(0, 180)
+        })
+      }
+    }
     if (
-      ['JOIN', 'PART', 'QUIT', 'KICK', '353', '366', 'NICK', '001', 'MODE', 'TOPIC', '332'].includes(
-        msg.command
-      )
+      [
+        'JOIN',
+        'PART',
+        'QUIT',
+        'KICK',
+        '353',
+        '366',
+        'NICK',
+        '001',
+        'MODE',
+        'TOPIC',
+        '332',
+        'ACCOUNT',
+        'AWAY',
+        '005'
+      ].includes(msg.command)
     ) {
       this.emitConnection(conn)
     }
@@ -389,16 +572,52 @@ export class ConnectionManager extends EventEmitter {
         const isPm = target.toLowerCase() === conn.nick.toLowerCase()
         const buffer = isPm ? msg.nick ?? target : target
         if (isPm && msg.nick) conn.queries.add(msg.nick.toLowerCase())
-        return { ...base, target: buffer, kind: 'privmsg', nick: msg.nick ?? undefined, text }
+        const ctcp = parseCtcp(text)
+        const kind = ctcp && ctcp.type !== 'ACTION' ? 'ctcp' : 'privmsg'
+        const ignored = matchesIgnore(conn.network.ignoreRules, {
+          nick: msg.nick,
+          user: msg.user,
+          host: msg.host,
+          channel: buffer.startsWith('#') ? buffer : undefined,
+          kind: ctcp ? 'ctcp' : 'privmsg'
+        })
+        const display = ctcp?.type === 'ACTION' ? text : ctcp ? `[CTCP ${ctcp.type}] ${ctcp.args}` : text
+        const highlighted =
+          !ignored &&
+          Boolean(
+            conn.network.highlights?.some((h) =>
+              display.toLowerCase().includes(h.toLowerCase())
+            ) || display.toLowerCase().includes(conn.nick.toLowerCase())
+          )
+        return {
+          ...base,
+          target: buffer,
+          kind: highlighted ? 'highlight' : kind,
+          nick: msg.nick ?? undefined,
+          text: display,
+          account: msg.tags.account,
+          ignored,
+          highlighted
+        }
       }
-      case 'NOTICE':
+      case 'NOTICE': {
+        const text = msg.params[1] ?? ''
+        const ignored = matchesIgnore(conn.network.ignoreRules, {
+          nick: msg.nick,
+          user: msg.user,
+          host: msg.host,
+          kind: parseCtcp(text) ? 'ctcp' : 'notice'
+        })
         return {
           ...base,
           target: msg.params[0] ?? '*',
           kind: 'notice',
           nick: msg.nick ?? undefined,
-          text: msg.params[1] ?? ''
+          text,
+          account: msg.tags.account,
+          ignored
         }
+      }
       case 'JOIN':
         return {
           ...base,
@@ -529,7 +748,12 @@ export class ConnectionManager extends EventEmitter {
         name: ch.name,
         type: 'channel',
         topic: ch.topic,
-        nicks: nicks.map((n) => ({ nick: n.nick, modes: n.modes })),
+        nicks: nicks.map((n) => ({
+          nick: n.nick,
+          modes: n.modes,
+          account: n.account,
+          away: n.away
+        })),
         unread: this.unreads.get(bufferKey(conn.id, ch.name)) ?? 0,
         selfIsOp: self ? isOpLike(self.modes) : false
       })
@@ -557,7 +781,9 @@ export class ConnectionManager extends EventEmitter {
       state: conn.state,
       nick: conn.nick,
       lastError: conn.lastError,
-      buffers
+      buffers,
+      caps: conn.negotiatedCaps,
+      isupport: conn.isupport
     }
   }
 

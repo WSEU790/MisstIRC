@@ -44,7 +44,14 @@ export class MockIrcServer extends EventEmitter {
       'sasl',
       'server-time',
       'message-tags',
-      'multi-prefix'
+      'multi-prefix',
+      'account-notify',
+      'extended-join',
+      'account-tag',
+      'away-notify',
+      'chghost',
+      'batch',
+      'labeled-response'
     ]
   }
 
@@ -87,6 +94,21 @@ export class MockIrcServer extends EventEmitter {
       client.socket.on('error', () => undefined)
       client.socket.destroy()
     }
+  }
+
+  /** Test helper: push a CTCP DCC SEND offer to the first client. */
+  sendDccOffer(filename: string, address = '2130706433', port = 59_999, size = 12): void {
+    const client = [...this.clients][0]
+    if (!client) return
+    const body = `\x01DCC SEND ${filename} ${address} ${port} ${size}\x01`
+    this.send(client, `:eve!e@localhost PRIVMSG ${client.nick} :${body}`)
+  }
+
+  /** Test helper: CTCP VERSION request to client. */
+  sendCtcpVersion(): void {
+    const client = [...this.clients][0]
+    if (!client) return
+    this.send(client, `:eve!e@localhost PRIVMSG ${client.nick} :\x01VERSION\x01`)
   }
 
   private onConnection(socket: net.Socket): void {
@@ -250,6 +272,19 @@ export class MockIrcServer extends EventEmitter {
         const target = msg.params[0]
         const text = msg.params[1] ?? ''
         if (!target) break
+        // CTCP request → reply via NOTICE
+        if (text.startsWith('\x01') && text.endsWith('\x01')) {
+          const inner = text.slice(1, -1)
+          const type = inner.split(' ')[0]?.toUpperCase() ?? ''
+          if (type === 'VERSION') {
+            this.send(client, `:mock!m@localhost NOTICE ${client.nick} :\x01VERSION MockIRC 1.0\x01`)
+          } else if (type === 'PING') {
+            this.send(client, `:mock!m@localhost NOTICE ${client.nick} :\x01${inner}\x01`)
+          } else if (type === 'DCC') {
+            // ignore client-originated
+          }
+          break
+        }
         if (target.startsWith('#')) {
           this.send(client, `:alice!alice@localhost PRIVMSG ${target} :echo:${text}`)
         } else {
@@ -257,6 +292,8 @@ export class MockIrcServer extends EventEmitter {
         }
         break
       }
+      case 'NOTICE':
+        break
       case 'QUIT':
         client.socket.end()
         break
@@ -272,6 +309,16 @@ export class MockIrcServer extends EventEmitter {
     client.registered = true
     this.send(client, formatIrcLine('001', [client.nick, 'Welcome to MockIRC']))
     this.send(client, formatIrcLine('002', [client.nick, 'Your host is mock.misstirc.local']))
+    this.send(
+      client,
+      formatIrcLine('005', [
+        client.nick,
+        'CHANTYPES=#',
+        'PREFIX=(ohv)@%+',
+        'NETWORK=MockIRC',
+        'are supported by this server'
+      ])
+    )
     this.send(client, formatIrcLine('376', [client.nick, 'End of MOTD']))
     this.emit('registered', client.nick)
   }

@@ -8,6 +8,7 @@ import type {
 } from '../../shared/types'
 import { ChannelDialog } from './components/ChannelDialog'
 import { Conversation } from './components/Conversation'
+import { DccPanel } from './components/DccPanel'
 import { NavTree } from './components/NavTree'
 import { NickList } from './components/NickList'
 import { SearchPanel } from './components/SearchPanel'
@@ -18,8 +19,15 @@ import { Toolbar } from './components/Toolbar'
 const emptyState: AppStateSnapshot = {
   connections: [],
   activeBufferKey: null,
-  settings: { theme: 'misstirc-dark', showStatusBar: true, fontSize: 14, loggingEnabled: true },
-  unfinished: []
+  settings: {
+    theme: 'misstirc-dark',
+    showStatusBar: true,
+    fontSize: 14,
+    loggingEnabled: true,
+    notificationsEnabled: true
+  },
+  unfinished: [],
+  dccOffers: []
 }
 
 function parseBufferKey(key: string | null): { connectionId: string; name: string } | null {
@@ -35,6 +43,7 @@ export function App(): React.JSX.Element {
   const [showServers, setShowServers] = useState(false)
   const [showChannels, setShowChannels] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
+  const [showDcc, setShowDcc] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [whois, setWhois] = useState<WhoisInfo | null>(null)
   const [networks, setNetworks] = useState<NetworkConfig[]>([])
@@ -65,6 +74,16 @@ export function App(): React.JSX.Element {
         }
         if (event.type === 'error') setError(event.payload.message)
         if (event.type === 'whois') setWhois(event.payload)
+        if (event.type === 'dcc') {
+          setState((prev) => {
+            const rest = prev.dccOffers.filter((o) => o.id !== event.payload.id)
+            return { ...prev, dccOffers: [event.payload, ...rest] }
+          })
+        }
+        if (event.type === 'notify') {
+          /* OS notification also raised from main; keep a light in-app hint */
+          setError(`Notify: ${event.payload.title} — ${event.payload.body}`)
+        }
       })
     })()
 
@@ -131,9 +150,11 @@ export function App(): React.JSX.Element {
         onServers={() => setShowServers(true)}
         onChannels={() => setShowChannels(true)}
         onSearch={() => setShowSearch(true)}
+        onDcc={() => setShowDcc(true)}
         onDisconnect={() => void handleDisconnect()}
         canDisconnect={Boolean(activeConnection)}
         canChannels={Boolean(activeConnection && activeConnection.state === 'connected')}
+        dccCount={state.dccOffers.filter((o) => o.status === 'pending').length}
       />
 
       {error ? (
@@ -199,6 +220,11 @@ export function App(): React.JSX.Element {
           onQuery={(n) => void handleSend(`/query ${n}`)}
           onKick={(n) => void handleSend(`/kick ${n}`)}
           onBan={(n) => void handleSend(`/ban ${n}`)}
+          onKickBan={(n) => void handleSend(`/kickban ${n}`)}
+          onOp={(n) => void handleSend(`/op ${n}`)}
+          onDeop={(n) => void handleSend(`/deop ${n}`)}
+          onVoice={(n) => void handleSend(`/voice ${n}`)}
+          onDevoice={(n) => void handleSend(`/devoice ${n}`)}
         />
       </div>
 
@@ -257,6 +283,14 @@ export function App(): React.JSX.Element {
             }
             setShowSearch(false)
           }}
+        />
+      ) : null}
+
+      {showDcc ? (
+        <DccPanel
+          offers={state.dccOffers}
+          onClose={() => setShowDcc(false)}
+          onRespond={(id, accept) => void window.misstirc.respondDcc(id, accept)}
         />
       ) : null}
     </div>

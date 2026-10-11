@@ -7,6 +7,7 @@
 | Parser | `tests/parser.test.ts` | Tags, PRIVMSG, numerics, serializer |
 | Protocol integration | `tests/irc-integration.test.ts` | Register, JOIN, PRIVMSG echo, SASL PLAIN, reconnect |
 | Phase 3 flows | `tests/phase3-integration.test.ts` | Ops/voice NAMES, WHOIS, topic/kick, unread |
+| Phase 4 advanced | `tests/phase4-advanced.test.ts` | CTCP flood, ignore, aliases, ISUPPORT, DCC paths, caps |
 | Formatting | `tests/irc-format.test.ts` | IRC codes → safe spans |
 | Logging | `tests/logging.test.ts` | Secret redaction + search |
 | Prefixes | `tests/prefixes.test.ts` | Mode/prefix helpers, channel keys |
