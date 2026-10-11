@@ -3,7 +3,7 @@
 Professional Windows-first IRC client built with **Electron**, **React**, **TypeScript**, and **Vite**. Real TCP/TLS IRC networking, multi-connection support, CAP/SASL registration, and a classic channel/PM shell.
 
 > Brand: **MisstIRC** — original assets only.  
-> Phase 5–7: scripting, compatibility diagnostics, and Customize (themes/layout/shortcuts/menus/backups). DCC transfers and the Windows installer remain unfinished (status bar).
+> Phases 1–8 + **0.8.0**: DCC SEND receive (local/direct; NAT not guaranteed), scripting subset, packaging prep. Signed Windows installer still gated on smoke checklist.
 
 ## Requirements
 
@@ -45,12 +45,12 @@ Output lands in `out/`.
 ### Packaging (Phase 8 prep)
 
 ```bash
-npm run pack:dir        # unpacked app for this OS → release/
-npm run pack:win:dir    # Windows x64 unpacked dry-run
-npm run pack:win        # NSIS — do not ship until smoke tests pass
+npm run pack:dir        # Linux x64 unpacked → release/linux-unpacked/
+npm run pack:win:dir    # Windows x64 unpacked → release/win-unpacked/
+npm run pack:win        # NSIS (unsigned) — do not ship until Windows smoke passes
 ```
 
-See `RELEASE.md`. Installer distribution is gated on the Windows smoke checklist (§26 rule 11).
+See `RELEASE.md` / `TESTING.md`. Installer distribution is gated on the Windows smoke checklist (§26 rule 11).
 
 ## Connect
 
@@ -69,4 +69,4 @@ Architecture, plan, and checklist live in the Project Context store under `docs/
 - Renderer has no Node access; IPC is a typed preload bridge (`window.misstirc`)
 - IRC passwords are not written into ordinary settings rows
 - Scripts are untrusted by default; grant capabilities explicitly. Not full mIRC/NNScript compatibility.
-- DCC offers are path-validated only — no transfer sockets yet
+- DCC SEND receive + RESUME/ACCEPT for local/direct peers; files never auto-executed; NAT/firewall not guaranteed
