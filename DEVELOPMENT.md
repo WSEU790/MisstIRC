@@ -14,9 +14,9 @@
 | `npm test` | Vitest suites |
 | `npm run typecheck` | `tsc` for node + web |
 | `npm run build` | Production electron-vite build → `out/` |
-| `npm run pack:dir` | Unpacked app for **current** OS → `release/` |
-| `npm run pack:win:dir` | Windows x64 unpacked dry-run → `release/` |
-| `npm run pack:win` | NSIS installer (do not ship until smoke green) |
+| `npm run pack:dir` | Linux x64 unpacked → `release/linux-unpacked/` |
+| `npm run pack:win:dir` | Windows x64 unpacked dry-run → `release/win-unpacked/` |
+| `npm run pack:win` | NSIS installer (unsigned; do not ship until Windows smoke green) |
 
 ## Branching
 
