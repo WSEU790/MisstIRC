@@ -187,27 +187,16 @@ function registerIpc(): void {
         permissions: opts?.permissions as never
       })
       emitScripts()
-      return {
-        id: record.id,
-        name: record.name,
-        filename: record.filename,
-        enabled: record.enabled,
-        trusted: record.trusted,
-        permissions: record.permissions,
-        parseErrors: record.parseErrors,
-        execErrors: record.execErrors,
-        status: record.status,
-        aliasCount: record.aliasCount,
-        eventCount: record.eventCount,
-        loadedAt: record.loadedAt
-      }
+      return toScriptRecordView(record)
     }
   )
 
-  ipcMain.handle('misstirc:enableScript', (_e, id: string): void => {
-    scripts.enable(id)
+  ipcMain.handle('misstirc:enableScript', (_e, id: string, force?: boolean): void => {
+    scripts.enable(id, Boolean(force))
     emitScripts()
   })
+
+  ipcMain.handle('misstirc:listScriptMenus', (_e, target?: string) => manager.listScriptMenus(target))
 
   ipcMain.handle('misstirc:disableScript', (_e, id: string): void => {
     scripts.disable(id)
@@ -218,20 +207,7 @@ function registerIpc(): void {
     const record = scripts.reload(id)
     emitScripts()
     if (!record) return null
-    return {
-      id: record.id,
-      name: record.name,
-      filename: record.filename,
-      enabled: record.enabled,
-      trusted: record.trusted,
-      permissions: record.permissions,
-      parseErrors: record.parseErrors,
-      execErrors: record.execErrors,
-      status: record.status,
-      aliasCount: record.aliasCount,
-      eventCount: record.eventCount,
-      loadedAt: record.loadedAt
-    }
+    return toScriptRecordView(record)
   })
 
   ipcMain.handle('misstirc:unloadScript', (_e, id: string): void => {
@@ -302,3 +278,44 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+function toScriptRecordView(record: {
+  id: string
+  name: string
+  filename: string
+  enabled: boolean
+  trusted: boolean
+  permissions: ScriptRecordView['permissions']
+  parseErrors: ScriptRecordView['parseErrors']
+  execErrors: string[]
+  diagnostics: ScriptRecordView['diagnostics']
+  menus: { target: string; rawTarget: string; items: unknown[]; line: number }[]
+  status: ScriptRecordView['status']
+  aliasCount: number
+  eventCount: number
+  menuCount: number
+  loadedAt: number
+}): ScriptRecordView {
+  return {
+    id: record.id,
+    name: record.name,
+    filename: record.filename,
+    enabled: record.enabled,
+    trusted: record.trusted,
+    permissions: record.permissions,
+    parseErrors: record.parseErrors,
+    execErrors: record.execErrors,
+    diagnostics: record.diagnostics,
+    menus: record.menus.map((m) => ({
+      target: m.target,
+      rawTarget: m.rawTarget,
+      itemCount: m.items.length,
+      line: m.line
+    })),
+    status: record.status,
+    aliasCount: record.aliasCount,
+    eventCount: record.eventCount,
+    menuCount: record.menuCount,
+    loadedAt: record.loadedAt
+  }
+}

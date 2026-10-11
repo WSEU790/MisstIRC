@@ -2,6 +2,7 @@ import type {
   AliasDecl,
   EventDecl,
   Expr,
+  MenuDecl,
   ParseError,
   RawDecl,
   ScriptFile,
@@ -50,7 +51,14 @@ export function parseScript(source: string): ParseResult {
       if (item) body.push(item)
       else {
         // recover: skip to next newline/top-level keyword
-        while (!check('EOF') && !check('NEWLINE') && !check('KW_ALIAS') && !check('KW_ON') && !check('KW_RAW')) {
+        while (
+          !check('EOF') &&
+          !check('NEWLINE') &&
+          !check('KW_ALIAS') &&
+          !check('KW_ON') &&
+          !check('KW_RAW') &&
+          !check('KW_MENU')
+        ) {
           pos += 1
         }
         skipNewlines()
@@ -63,14 +71,52 @@ export function parseScript(source: string): ParseResult {
     if (check('KW_ALIAS')) return parseAlias()
     if (check('KW_ON')) return parseOn()
     if (check('KW_RAW')) return parseRaw()
+    if (check('KW_MENU')) return parseMenu()
     const t = at()
     errors.push({
       line: t.line,
       column: t.column,
-      message: `Expected alias/on/raw, found ${t.kind} (${t.value})`
+      message: `Expected alias/on/raw/menu, found ${t.kind} (${t.value})`
     })
     pos += 1
     return null
+  }
+
+  function parseMenu(): MenuDecl | null {
+    // Body is consumed as raw text for the menu scaffold (menus.ts does structure).
+    const start = expect('KW_MENU', 'Expected menu')
+    if (!start) return null
+    const targetTok = match('IDENT', 'STAR', 'STRING')
+    const target = targetTok?.value ?? 'unknown'
+    skipNewlines()
+    const bodyParts: string[] = []
+    if (match('LBRACE')) {
+      let depth = 1
+      while (!check('EOF') && depth > 0) {
+        if (check('LBRACE')) depth += 1
+        if (check('RBRACE')) {
+          depth -= 1
+          if (depth === 0) {
+            pos += 1
+            break
+          }
+        }
+        bodyParts.push(at().value)
+        pos += 1
+      }
+    } else {
+      errors.push({
+        line: at().line,
+        column: at().column,
+        message: 'Expected { after menu target'
+      })
+    }
+    return {
+      type: 'MenuDecl',
+      target,
+      bodyText: bodyParts.join(' '),
+      line: start.line
+    }
   }
 
   function parseAlias(): AliasDecl | null {

@@ -1,11 +1,10 @@
 /**
- * MisstIRC scripting foundation (Phase 5).
- * Structured AST lexer/parser + sandboxed runtime — not string-eval.
- * Untrusted by default; no unrestricted Node/fs/net; DLL calls forbidden.
+ * MisstIRC scripting (Phase 5–6).
+ * Structured AST + sandboxed runtime + compatibility diagnostics.
  * Full mIRC / NNScript drop-in compatibility is NOT claimed.
  */
 
-export type { ParseError, ScriptFile } from './ast'
+export type { ParseError, ScriptFile, MenuDecl } from './ast'
 export { lex } from './lexer'
 export { parseScript, type ParseResult } from './parser'
 export {
@@ -29,5 +28,22 @@ export {
   ScriptManager,
   type ScriptManagerHost,
   type ScriptRecord,
-  type ScriptStatus
+  type ScriptStatus,
+  type ScriptDiagnostics
 } from './manager'
+export {
+  diagnoseCompatibility,
+  formatCompatSummary,
+  COMPAT_CATALOG,
+  UNSUPPORTED_COMMANDS,
+  type CompatFinding,
+  type CompatReport,
+  type CompatStatus
+} from './compat'
+export {
+  parseMenus,
+  flattenMenuCommands,
+  type MenuDefinition,
+  type MenuItem,
+  type MenuTarget
+} from './menus'

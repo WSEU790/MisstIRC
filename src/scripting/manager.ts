@@ -2,6 +2,17 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ParseError, ScriptFile } from './ast'
+import {
+  diagnoseCompatibility,
+  formatCompatSummary,
+  type CompatFinding,
+  type CompatReport
+} from './compat'
+import {
+  flattenMenuCommands,
+  parseMenus,
+  type MenuDefinition
+} from './menus'
 import { parseScript } from './parser'
 import { ScriptRuntime, type EventContext, type ScriptHost } from './runtime'
 import {
@@ -15,6 +26,15 @@ import { TimerTable } from './timers'
 
 export type ScriptStatus = 'enabled' | 'disabled' | 'error'
 
+export interface ScriptDiagnostics {
+  summary: string
+  findings: CompatFinding[]
+  unsupportedCount: number
+  partialCount: number
+  hasBlockingUnsupported: boolean
+  menuErrors: { line: number; message: string }[]
+}
+
 export interface ScriptRecord {
   id: string
   name: string
@@ -25,9 +45,12 @@ export interface ScriptRecord {
   permissions: ScriptPermission[]
   parseErrors: ParseError[]
   execErrors: string[]
+  diagnostics: ScriptDiagnostics
+  menus: MenuDefinition[]
   status: ScriptStatus
   aliasCount: number
   eventCount: number
+  menuCount: number
   loadedAt: number
 }
 
@@ -37,7 +60,10 @@ export interface ScriptManagerHost {
 }
 
 export class ScriptManager {
-  private scripts = new Map<string, { record: ScriptRecord; ast: ScriptFile | null; runtime: ScriptRuntime | null }>()
+  private scripts = new Map<
+    string,
+    { record: ScriptRecord; ast: ScriptFile | null; runtime: ScriptRuntime | null }
+  >()
   private readonly timers: TimerTable
   private readonly dir: string
 
@@ -56,7 +82,17 @@ export class ScriptManager {
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  /** Load .mrc/.txt scripts already on disk. */
+  /** All menu definitions from enabled scripts. */
+  listMenus(): MenuDefinition[] {
+    const out: MenuDefinition[] = []
+    for (const entry of this.scripts.values()) {
+      if (!entry.record.enabled) continue
+      out.push(...entry.record.menus)
+    }
+    return out
+  }
+
+  /** Load .mrc/.txt/.misst scripts already on disk. */
   loadFromDisk(): void {
     if (!existsSync(this.dir)) return
     for (const file of readdirSync(this.dir)) {
@@ -72,35 +108,54 @@ export class ScriptManager {
     opts: { persist?: boolean; trusted?: boolean; permissions?: ScriptPermission[] } = {}
   ): ScriptRecord {
     const id = randomUUID()
-    const filename = sanitizeName(name.endsWith('.mrc') ? name : `${name}.mrc`)
+    const filename = sanitizeName(normalizeFilename(name))
     const persist = opts.persist !== false
     if (persist) writeFileSync(join(this.dir, filename), source, 'utf8')
 
     const parsed = parseScript(source)
+    const menuParsed = parseMenus(source)
+    const compat = diagnoseCompatibility(source)
+    const diagnostics = toDiagnostics(compat, menuParsed.errors)
+
+    // Parse errors OR blocking unsupported → error status (still imported for inspection)
+    const blocking = parsed.errors.length > 0 || diagnostics.hasBlockingUnsupported
     const record: ScriptRecord = {
       id,
       name: filename,
       filename,
       source,
-      enabled: parsed.errors.length === 0,
+      enabled: !blocking,
       trusted: Boolean(opts.trusted),
-      permissions: opts.permissions ?? (opts.trusted ? DEFAULT_SANDBOX_POLICY.allowed : UNTRUSTED_POLICY.allowed),
+      permissions:
+        opts.permissions ??
+        (opts.trusted ? DEFAULT_SANDBOX_POLICY.allowed : UNTRUSTED_POLICY.allowed),
       parseErrors: parsed.errors,
       execErrors: [],
-      status: parsed.errors.length ? 'error' : 'enabled',
+      diagnostics,
+      menus: menuParsed.menus,
+      status: blocking ? 'error' : 'enabled',
       aliasCount: 0,
       eventCount: 0,
+      menuCount: menuParsed.menus.length,
       loadedAt: Date.now()
     }
 
     let runtime: ScriptRuntime | null = null
-    if (parsed.file && parsed.errors.length === 0) {
+    // Allow runtime when parse succeeded even if unsupported markers exist —
+    // but keep disabled when blocking so user must acknowledge / strip.
+    if (parsed.file && parsed.errors.length === 0 && !diagnostics.hasBlockingUnsupported) {
       runtime = this.createRuntime(id, parsed.file, record)
       record.aliasCount = runtime.aliasNames.length
       record.eventCount = runtime.eventCount
+    } else if (parsed.file && parsed.errors.length === 0) {
+      // Build runtime for inspection but leave disabled
+      runtime = this.createRuntime(id, parsed.file, record)
+      record.aliasCount = runtime.aliasNames.length
+      record.eventCount = runtime.eventCount
+      record.enabled = false
+      record.status = 'error'
     }
 
-    // Replace same filename
     for (const [sid, entry] of this.scripts) {
       if (entry.record.filename === filename) {
         this.timers.clearScript(sid)
@@ -112,12 +167,25 @@ export class ScriptManager {
     return record
   }
 
-  enable(id: string): void {
+  /**
+   * Enable a script. Refuses when parse errors remain.
+   * Blocking unsupported can be overridden with `force` after user ack.
+   */
+  enable(id: string, force = false): void {
     const entry = this.scripts.get(id)
     if (!entry) return
     if (entry.record.parseErrors.length) {
       entry.record.status = 'error'
       entry.record.enabled = false
+      return
+    }
+    if (entry.record.diagnostics.hasBlockingUnsupported && !force) {
+      entry.record.status = 'error'
+      entry.record.enabled = false
+      entry.record.execErrors = [
+        ...entry.record.execErrors,
+        'Enable blocked: unsupported features reported — use force enable after review'
+      ].slice(-20)
       return
     }
     if (!entry.runtime && entry.ast) {
@@ -169,7 +237,32 @@ export class ScriptManager {
     }
   }
 
-  /** Try script aliases before built-in slash commands. */
+  /** Invoke a menu command line through the script host (permission-gated at runtime). */
+  runMenuCommand(scriptId: string, command: string): boolean {
+    const entry = this.scripts.get(scriptId)
+    if (!entry?.record.enabled) return false
+    const line = command.startsWith('/') ? command : `/${command}`
+    if (this.tryAlias(line)) return true
+    this.host.sendCommand(scriptId, line)
+    return true
+  }
+
+  /** Collect invokable menu commands for a target (channel/nick/…). */
+  menuCommandsFor(target: string): { scriptId: string; label: string; command: string }[] {
+    const t = target.toLowerCase()
+    const out: { scriptId: string; label: string; command: string }[] = []
+    for (const entry of this.scripts.values()) {
+      if (!entry.record.enabled) continue
+      for (const menu of entry.record.menus) {
+        if (menu.target !== t && menu.rawTarget.toLowerCase() !== t) continue
+        for (const cmd of flattenMenuCommands(menu)) {
+          out.push({ scriptId: entry.record.id, label: cmd.label, command: cmd.command })
+        }
+      }
+    }
+    return out
+  }
+
   tryAlias(line: string): boolean {
     if (!line.startsWith('/')) return false
     const without = line.slice(1)
@@ -206,8 +299,6 @@ export class ScriptManager {
   }
 
   private createRuntime(id: string, file: ScriptFile, record: ScriptRecord): ScriptRuntime {
-    const policy = this.policyFor(id)
-    // Rebuild with current permissions
     const effective = grantCapabilities(
       record.trusted ? DEFAULT_SANDBOX_POLICY : UNTRUSTED_POLICY,
       record.permissions
@@ -218,9 +309,27 @@ export class ScriptManager {
       setTimer: (name, delay, reps, body) => this.timers.set(id, name, delay, reps, body),
       clearTimer: (name) => this.timers.clear(id, name)
     }
-    void policy
     return new ScriptRuntime(file, { policy: effective, host, scriptId: id })
   }
+}
+
+function toDiagnostics(
+  compat: CompatReport,
+  menuErrors: { line: number; message: string }[]
+): ScriptDiagnostics {
+  return {
+    summary: formatCompatSummary(compat),
+    findings: compat.findings,
+    unsupportedCount: compat.unsupportedCount,
+    partialCount: compat.partialCount,
+    hasBlockingUnsupported: compat.hasBlockingUnsupported,
+    menuErrors
+  }
+}
+
+function normalizeFilename(name: string): string {
+  if (/\.(mrc|txt|misst)$/i.test(name)) return name
+  return `${name}.mrc`
 }
 
 function sanitizeName(name: string): string {

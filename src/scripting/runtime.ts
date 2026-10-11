@@ -6,6 +6,7 @@ import type {
   ScriptFile,
   Statement
 } from './ast'
+import { UNSUPPORTED_COMMANDS } from './compat'
 import {
   assertPermission,
   InstructionBudget,
@@ -323,7 +324,12 @@ export class ScriptRuntime {
       case 'return':
         return
       default: {
-        // Unknown command → try as /command if permitted
+        if (UNSUPPORTED_COMMANDS.has(name)) {
+          const msg = `Unsupported script command: /${name} (not silently ignored)`
+          this.errors.push(msg)
+          throw new Error(msg)
+        }
+        // Unknown but not in unsupported list → IRC slash if permitted
         this.require('irc.command')
         this.opts.host.sendCommand(`/${name} ${expanded}`.trim())
       }

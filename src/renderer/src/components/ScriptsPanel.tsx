@@ -17,7 +17,7 @@ interface Props {
   scripts: ScriptRecordView[]
   onClose: () => void
   onImport: (name: string, source: string, trusted: boolean) => Promise<void>
-  onEnable: (id: string) => Promise<void>
+  onEnable: (id: string, force?: boolean) => Promise<void>
   onDisable: (id: string) => Promise<void>
   onReload: (id: string) => Promise<void>
   onUnload: (id: string) => Promise<void>
@@ -62,9 +62,9 @@ export function ScriptsPanel({
       >
         <h2>Scripts</h2>
         <p className="sub">
-          Phase 5 foundation: AST lexer/parser and sandboxed runtime. Imports are{' '}
-          <strong>untrusted</strong> (echo-only) until you grant capabilities. No DLL, unrestricted
-          Node, or raw filesystem. Not full mIRC/NNScript compatibility.
+          Sandboxed mIRC-style subset with Phase 6 import diagnostics. Imports are{' '}
+          <strong>untrusted</strong> until you grant capabilities. Unsupported constructs are
+          reported (never silently ignored). Not full mIRC/NNScript compatibility.
         </p>
 
         {error ? (
@@ -120,10 +120,21 @@ export function ScriptsPanel({
                     <strong>
                       {s.filename}{' '}
                       <span className="sub">
-                        [{s.status}] aliases={s.aliasCount} events={s.eventCount}
+                        [{s.status}] aliases={s.aliasCount} events={s.eventCount} menus=
+                        {s.menuCount}
                         {s.trusted ? ' trusted' : ' untrusted'}
                       </span>
                     </strong>
+                    {s.diagnostics ? (
+                      <span className="sub">
+                        Compat: {s.diagnostics.summary}
+                        {s.diagnostics.findings
+                          .filter((f) => f.status !== 'works')
+                          .slice(0, 5)
+                          .map((f) => ` · L${f.line ?? '?'}: ${f.message}`)
+                          .join('')}
+                      </span>
+                    ) : null}
                     {s.parseErrors.length ? (
                       <span className="sub" style={{ color: 'var(--danger, #e66)' }}>
                         Parse: {s.parseErrors.map((e) => `L${e.line}: ${e.message}`).join('; ')}
@@ -146,14 +157,27 @@ export function ScriptsPanel({
                           Disable
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={busy || s.parseErrors.length > 0}
-                          onClick={() => void run(() => onEnable(s.id))}
-                        >
-                          Enable
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={busy || s.parseErrors.length > 0}
+                            onClick={() => void run(() => onEnable(s.id))}
+                          >
+                            Enable
+                          </button>
+                          {s.diagnostics?.hasBlockingUnsupported ? (
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={busy || s.parseErrors.length > 0}
+                              title="Enable despite unsupported features (after review)"
+                              onClick={() => void run(() => onEnable(s.id, true))}
+                            >
+                              Force enable
+                            </button>
+                          ) : null}
+                        </>
                       )}
                       <button
                         type="button"

@@ -29,6 +29,7 @@ export type TokenKind =
   | 'KW_ALIAS'
   | 'KW_ON'
   | 'KW_RAW'
+  | 'KW_MENU'
   | 'KW_IF'
   | 'KW_ELSE'
   | 'KW_WHILE'
@@ -49,6 +50,7 @@ const KEYWORDS: Record<string, TokenKind> = {
   alias: 'KW_ALIAS',
   on: 'KW_ON',
   raw: 'KW_RAW',
+  menu: 'KW_MENU',
   if: 'KW_IF',
   else: 'KW_ELSE',
   while: 'KW_WHILE',

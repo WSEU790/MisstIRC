@@ -13,7 +13,16 @@ export interface ScriptFile {
   body: TopLevel[]
 }
 
-export type TopLevel = AliasDecl | EventDecl | RawDecl
+export type TopLevel = AliasDecl | EventDecl | RawDecl | MenuDecl
+
+/** Scaffold-only menu declaration (see menus.ts for full tree). */
+export interface MenuDecl {
+  type: 'MenuDecl'
+  target: string
+  /** Opaque body lines preserved for the menu scaffold */
+  bodyText: string
+  line: number
+}
 
 export interface AliasDecl {
   type: 'AliasDecl'

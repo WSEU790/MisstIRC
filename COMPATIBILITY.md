@@ -2,7 +2,17 @@
 
 ## Policy
 
-MisstIRC aims for **familiar workflows** for mIRC / NNScript users. Full script/theme/DLL compatibility is **not claimed** until Phase 6 fixtures exist (§26 rule 10).
+MisstIRC aims for **familiar workflows** for mIRC / NNScript users.
+
+**Full mIRC or NNScript drop-in compatibility is not claimed.** Claims below are backed by Phase 6 fixtures in `tests/fixtures/compatibility/` and `tests/phase6-compatibility.test.ts` (§26 rule 10).
+
+Status key:
+
+| Status | Meaning |
+|--------|---------|
+| **works** | Implemented and covered by automated fixtures/tests |
+| **partial** | Subset / scaffold only; differences documented |
+| **unsupported** | Explicitly rejected or out of scope — **never silently ignored** |
 
 ## Reference installer (lawful inspection)
 
@@ -11,54 +21,82 @@ MisstIRC aims for **familiar workflows** for mIRC / NNScript users. Full script/
 | File | `nnscript421.exe` (Project store `internal/reference/`) |
 | Size | 1,177,487 bytes |
 | Type | PE32 GUI, Intel 80386, **Nullsoft Installer** self-extracting archive |
-| NSIS | v2.37 (assembly manifest); Method LZMA:23; Solid; SubType NSIS-2 |
-| Authenticode | **Not signed** (certificate data directory empty) |
+| NSIS | v2.37; LZMA:23; Solid; NSIS-2 |
+| Authenticode | **Not signed** |
 | Product (docs) | NoNameScript / NoNamedScript **4.21** (©2008 ESNation) |
 | Host client target | Bundled `mirc.ini` targets **mIRC 6.31** |
-| License (readme) | `.nns` scripts and `nnscript.dll` copyrighted; personal modification allowed; **redistribution of script parts forbidden** without ESNation permission |
-| Bundled proprietary | Themes (`.nnt`), scripts (`.nns`), icon packs, fonts, `nnscript.dll`, DCX/MDX DLLs — **not reused in MisstIRC** |
-
-### User-accessible materials inspected
-
-- `nnreadme.txt` — license / copyright / forum pointer  
-- `nnchanges.txt` — 4.21 changelog (themes, protections, toolbar, installer, NickServ, status bar, etc.)  
-- `mirc.ini` — section keys + remotes/aliases file list (names only for compatibility planning)  
-- `popups.ini` — trivial stub (`NoNa&meScript`)  
-- Archive file listing (extensions/counts) — ~1794 `.ico`, 58 `.nnt`, 43 `.nns`, DLLs under `scripts/dlls/`
+| License (readme) | `.nns` / `nnscript.dll` copyrighted; redistribution of script parts forbidden without permission |
+| Bundled proprietary | Themes, scripts, icons, fonts, DLLs — **not reused in MisstIRC** |
 
 ### Not done / not allowed
 
 - No DRM or license bypass  
-- No copying of `.nns`, icons, fonts, splash art, or DLLs into the MisstIRC product tree  
+- No copying of `.nns`, icons, fonts, splash art, or DLLs into the product tree  
 - No loading of `nnscript.dll`  
 
-## Observable NNScript feature areas → MisstIRC
+Full matrix: Project Context `docs/reference-matrix.md`.
 
-Full matrix: Project Context `docs/reference-matrix.md`. Summary:
+## mIRC-style scripting subset
 
-| Area | NNScript 4.21 (observed) | MisstIRC status |
-|------|--------------------------|-----------------|
-| Host | Script pack **on mIRC** | Standalone Electron client |
-| Themes | Dozens of `.nnt` + theme engine | CSS variable theme; editor Planned |
-| Toolbar / tree / status | Rich script UI | Basic shell Partially implemented |
-| Protections (query flood, blacklist) | Script modules | Planned |
-| Away / NickServ | Script | Planned (NickServ via SASL/pass partially) |
-| DCC helpers | Scripts + relay | Stub only |
-| Popups / aliases | `.nns` + popups | Planned (Phase 5–6) |
-| DLL UI (DCX/MDX) | Native mIRC DLLs | **Unsupported** |
+| Construct | Status | Notes | Fixture / test |
+|-----------|--------|-------|----------------|
+| `alias { }` | works | Nested alias calls | `workflow-greeter.mrc` |
+| `on LEVEL:EVENT:…` | partial | TEXT/JOIN/PART/QUIT/NOTICE/CONNECT/DISCONNECT; pattern subset | `workflow-greeter.mrc` |
+| `raw N:…` | partial | Numeric handlers; match subset | unit (Phase 5) |
+| `if` / `else` / `while` | works | Caps on iterations / instructions | Phase 5 tests |
+| `var` / `inc` / `dec` | works | `%vars` | Phase 5 tests |
+| `$nick` `$chan` `$1` `$1-` `$*` | partial | Common idents only | Phase 5–6 |
+| `echo` / `timer` | works | Permission-gated | Phase 5 |
+| IRC slash (`msg`/`join`/…) | works | Requires grants | Phase 5 |
+| `halt` / `return` | works | Event cancel via `halt` | Phase 5 |
+| `menu <target> { }` | partial | Parsed scaffold + menu API; not full popup engine | `workflow-channel-menu.mrc` |
+| `goto` / labels | unsupported | Reported on import | compat scanner |
+| `/dll` `$dll` DCX/MDX | unsupported | Blocking diagnostics; runtime error if forced | `workflow-unsupported-dll.mrc` |
+| `/dialog` `/window` `/draw*` | unsupported | Reported; not silent | compat catalog |
+| `/com*` `/sock*` `/run` | unsupported | Forbidden | compat catalog |
+| File / INI helpers | unsupported | No script filesystem | compat catalog |
+| `$iif` `$regex` `$readini` | unsupported | Use `if`/else | compat catalog |
+| `$calc` | partial | Prefer arithmetic exprs | catalog |
+| `.nns` / `nnscript.dll` | unsupported | Not loaded | scanner + dll fixture |
 
-## mIRC-style scripting (Phase 5 foundation)
+Untrusted imports are echo-only until the user grants capabilities. Blocking unsupported features leave the script **disabled** until reviewed (`force enable` in UI).
 
-MisstIRC ships a **subset** scripting engine (AST lexer/parser + sandbox). This is **not** a claim of full mIRC or NNScript compatibility.
+## NNScript workflows (from reference matrix)
 
-| Area | Status |
-|------|--------|
-| `alias` / `on` / `raw` top-levels | Partially implemented (subset syntax) |
-| `if` / `else` / `while` / `var` / `halt` / `return` | Partially implemented |
-| `%variables`, `$nick` / `$chan` / `$1`… | Partially implemented |
-| `echo`, IRC slash passthrough (`msg`/`join`/…), `timer` | Partially implemented (permission-gated) |
-| Identifiers / `$calc` / menus / dialogs / COM | Planned / Unsupported |
-| DLL calls (`nnscript.dll`, DCX/MDX, `/dll`) | **Unsupported** |
-| Drop-in `.mrc` / `.nns` from NNScript 4.21 | **Not claimed** — Phase 6 fixtures will document supported workflows |
+These map **workflows**, not proprietary script code.
 
-Untrusted imports get echo-only until the user grants capabilities.
+| Workflow | NNScript observation | MisstIRC | Status | Evidence |
+|----------|----------------------|----------|--------|----------|
+| Connect / register | mIRC UI + NickServ scripts | TCP/TLS, CAP, SASL; password field | partial | IRC integration tests |
+| Channel greeter / TEXT events | events.nns-style handlers | `on *:TEXT:…` subset | works | `workflow-greeter.mrc` |
+| Channel popups | popups.nns / popups.ini | `menu channel { }` scaffold | partial | `workflow-channel-menu.mrc` |
+| Away system | awaysys.nns + toolbar | `/away` client + echo helper fixture | partial | `workflow-away-echo.mrc` |
+| NickServ UX | 4.21 NickServ improvements | Prefer SASL/password — no secrets in scripts | partial | `workflow-nickserv-note.mrc` |
+| Protections / flood | script modules | Planned (app-level ignore exists) | unsupported* | *as NNS modules |
+| Themes `.nnt` | theme engine | CSS variables only | unsupported | license + Phase 7 editor |
+| Native DLLs | nnscript.dll, DCX/MDX | No DLL host | unsupported | `workflow-unsupported-dll.mrc` |
+| DCC helpers | scripts + relay | Offers only; no transfer sockets | partial | Phase 4 DCC tests |
+
+\* “Unsupported” here means MisstIRC does **not** load NNScript protection modules; app-level ignore/highlights are separate.
+
+## Import diagnostics
+
+On import, MisstIRC always produces:
+
+1. **Parse errors** (structured AST parser)  
+2. **Compatibility findings** (`works` / `partial` / `unsupported`) with line numbers  
+3. **Menu parse errors** (if any)  
+
+Unsupported script commands throw at runtime with a clear error — they are **not** forwarded as IRC lines.
+
+## Menu / popup scaffolding
+
+- `menu channel|nick|query|status|menubar|nicklist { … }` is parsed into a tree (commands, separators, dotted submenus).  
+- Enabled scripts expose items via `listScriptMenus` / Scripts panel metadata.  
+- **Not claimed:** full mIRC popup evaluation, `$menu`, dynamic enable expressions, or DLL-drawn UI.
+
+## Manual verification (optional)
+
+1. Scripts → import `workflow-greeter.mrc` → grant IRC caps if needed → `/greeter alice` echoes.  
+2. Import `workflow-unsupported-dll.mrc` → status error + diagnostics mention `/dll` → Force enable still errors at runtime on `/boom`.  
+3. Import `workflow-channel-menu.mrc` → menus count ≥ 1 in Scripts panel.

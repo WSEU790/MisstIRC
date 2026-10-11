@@ -30,12 +30,14 @@ const api: MisstIrcApi = {
   listScripts: () => ipcRenderer.invoke('misstirc:listScripts'),
   importScript: (name, source, opts) =>
     ipcRenderer.invoke('misstirc:importScript', name, source, opts),
-  enableScript: (id: string) => ipcRenderer.invoke('misstirc:enableScript', id),
+  enableScript: (id: string, force?: boolean) =>
+    ipcRenderer.invoke('misstirc:enableScript', id, force),
   disableScript: (id: string) => ipcRenderer.invoke('misstirc:disableScript', id),
   reloadScript: (id: string) => ipcRenderer.invoke('misstirc:reloadScript', id),
   unloadScript: (id: string) => ipcRenderer.invoke('misstirc:unloadScript', id),
   setScriptPermissions: (id: string, permissions: ScriptPermissionName[]) =>
     ipcRenderer.invoke('misstirc:setScriptPermissions', id, permissions),
+  listScriptMenus: (target?: string) => ipcRenderer.invoke('misstirc:listScriptMenus', target),
   onEvent: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: MainToRendererEvent): void => {
       handler(payload)

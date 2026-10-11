@@ -309,8 +309,8 @@ export function App(): React.JSX.Element {
           onImport={async (name, source, trusted) => {
             await window.misstirc.importScript(name, source, { trusted })
           }}
-          onEnable={async (id) => {
-            await window.misstirc.enableScript(id)
+          onEnable={async (id, force) => {
+            await window.misstirc.enableScript(id, force)
           }}
           onDisable={async (id) => {
             await window.misstirc.disableScript(id)

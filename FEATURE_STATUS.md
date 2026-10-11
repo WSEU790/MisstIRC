@@ -50,12 +50,23 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | Script manager (import/enable/disable/reload/unload) | Implemented and tested | Parse/exec errors surfaced |
 | Sandbox (untrusted default, grants, limits) | Implemented and tested | No DLL / unrestricted Node |
 | Command registry integration | Implemented but incompletely tested | Aliases before slash; UI Scripts panel |
-| Full mIRC / NNScript compatibility | Planned / Unsupported (DLLs) | Do not claim drop-in yet |
+| Full mIRC / NNScript compatibility | Unsupported (drop-in) | Subset only; see Phase 6 |
 
-## Phase 6–8
+## Phase 6 — Legacy compatibility
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| mIRC-style syntax compat layer | Partially implemented | Documented works/partial/unsupported |
+| Compat diagnostics on import | Implemented and tested | Blocking unsupported disables script |
+| Unsupported command reporting | Implemented and tested | Never silent; runtime throws |
+| Menu/popup scaffolding | Partially implemented | Parse + list API; no full popup engine |
+| NNScript workflow fixtures | Implemented and tested | Original fixtures (not `.nns` copies) |
+| COMPATIBILITY.md matrix | Implemented and tested | Tied to fixtures |
+| Drop-in `.nns` / DLL host | Unsupported | License + security |
+
+## Phase 7–8
 
 | Feature | Status |
 |---------|--------|
-| Legacy fixtures / workflow docs | Planned |
 | Theme editor, layouts, backups | Planned |
 | Windows installer | Planned |

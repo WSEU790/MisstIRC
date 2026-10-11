@@ -74,6 +74,15 @@ export class ConnectionManager extends EventEmitter {
     return (this.scripts?.list() ?? []).map(toScriptView)
   }
 
+  listScriptMenus(target?: string): { scriptId: string; label: string; command: string }[] {
+    if (!this.scripts) return []
+    if (target) return this.scripts.menuCommandsFor(target)
+    const targets = new Set(this.scripts.listMenus().map((m) => m.target))
+    const out: { scriptId: string; label: string; command: string }[] = []
+    for (const t of targets) out.push(...this.scripts.menuCommandsFor(t))
+    return out
+  }
+
   getSnapshot(): AppStateSnapshot {
     return {
       connections: [...this.connections.values()].map((c) => this.toSnapshot(c)),
@@ -1021,9 +1030,12 @@ function toScriptView(r: {
   permissions: ScriptRecordView['permissions']
   parseErrors: ScriptRecordView['parseErrors']
   execErrors: string[]
+  diagnostics: ScriptRecordView['diagnostics']
+  menus: { target: string; rawTarget: string; items: unknown[]; line: number }[]
   status: ScriptRecordView['status']
   aliasCount: number
   eventCount: number
+  menuCount: number
   loadedAt: number
 }): ScriptRecordView {
   return {
@@ -1035,9 +1047,17 @@ function toScriptView(r: {
     permissions: r.permissions,
     parseErrors: r.parseErrors,
     execErrors: r.execErrors,
+    diagnostics: r.diagnostics,
+    menus: r.menus.map((m) => ({
+      target: m.target,
+      rawTarget: m.rawTarget,
+      itemCount: m.items.length,
+      line: m.line
+    })),
     status: r.status,
     aliasCount: r.aliasCount,
     eventCount: r.eventCount,
+    menuCount: r.menuCount,
     loadedAt: r.loadedAt
   }
 }

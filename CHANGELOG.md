@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — Phase 6 legacy compatibility
+
+### Added
+
+- Compatibility diagnostics on script import (`works` / `partial` / `unsupported`) with line-level findings
+- Blocking unsupported constructs (DLL/COM/dialogs/sockets/…) — scripts stay disabled until reviewed
+- Runtime refuses known-unsupported commands instead of silent IRC passthrough
+- `menu <target> { … }` popup scaffolding (parse tree + menu list API)
+- Original compatibility fixtures under `tests/fixtures/compatibility/` + Phase 6 tests
+- COMPATIBILITY.md rewritten with works/partial/unsupported tables (no full-compat claim)
+
+### Not claimed
+
+- Full mIRC or NNScript drop-in compatibility
+- Loading `.nns` packs, `nnscript.dll`, DCX/MDX, or proprietary themes
+- Full popup engine / `$menu` / custom dialogs
+
 ## 0.4.0 — Phase 5 scripting foundation
 
 ### Added

@@ -145,6 +145,32 @@ export interface ScriptParseErrorView {
   message: string
 }
 
+export type CompatStatusView = 'works' | 'partial' | 'unsupported'
+
+export interface CompatFindingView {
+  status: CompatStatusView
+  code: string
+  message: string
+  line?: number
+  construct: string
+}
+
+export interface ScriptDiagnosticsView {
+  summary: string
+  findings: CompatFindingView[]
+  unsupportedCount: number
+  partialCount: number
+  hasBlockingUnsupported: boolean
+  menuErrors: { line: number; message: string }[]
+}
+
+export interface ScriptMenuView {
+  target: string
+  rawTarget: string
+  itemCount: number
+  line: number
+}
+
 /** Sandboxed script metadata exposed to the UI (source omitted from hot state). */
 export interface ScriptRecordView {
   id: string
@@ -155,9 +181,12 @@ export interface ScriptRecordView {
   permissions: ScriptPermissionName[]
   parseErrors: ScriptParseErrorView[]
   execErrors: string[]
+  diagnostics: ScriptDiagnosticsView
+  menus: ScriptMenuView[]
   status: ScriptStatusView
   aliasCount: number
   eventCount: number
+  menuCount: number
   loadedAt: number
 }
 
@@ -246,8 +275,9 @@ export interface MisstIrcApi {
     source: string,
     opts?: { trusted?: boolean; permissions?: ScriptPermissionName[] }
   ) => Promise<ScriptRecordView>
-  enableScript: (id: string) => Promise<void>
+  enableScript: (id: string, force?: boolean) => Promise<void>
   disableScript: (id: string) => Promise<void>
+  listScriptMenus: (target?: string) => Promise<{ scriptId: string; label: string; command: string }[]>
   reloadScript: (id: string) => Promise<ScriptRecordView | null>
   unloadScript: (id: string) => Promise<void>
   setScriptPermissions: (id: string, permissions: ScriptPermissionName[]) => Promise<void>
