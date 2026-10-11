@@ -9,7 +9,7 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 | Electron + React + TS + Vite scaffold | Implemented and tested | `npm run build` / `npm test` |
 | Secure process boundaries | Implemented and tested | contextIsolation, no nodeIntegration, sandbox |
 | Design system / MisstIRC theme | Partially implemented | CSS variables + shell; theme editor later |
-| Main application shell | Implemented but incompletely tested | Toolbar, nav, conversation, nicks, status; needs Electron UI manual pass |
+| Main application shell | Implemented but incompletely tested | Needs Electron UI manual pass |
 | Configuration persistence (SQLite) | Implemented and tested | Networks + settings migrations |
 | Secret store | Partially implemented | Encrypted file fallback; Windows Credential Manager later |
 | Mock IRC infrastructure | Implemented and tested | `src/mock-irc` + Vitest |
@@ -29,19 +29,24 @@ States: **Implemented and tested** · **Implemented but incompletely tested** ·
 
 ## Phase 3 — Daily IRC
 
-| Feature | Status |
-|---------|--------|
-| Server/channel manager UI | Partially implemented |
-| Nick list | Partially implemented |
-| Slash commands + history | Partially implemented |
-| Nick completion / unread / search / logging UI | Planned |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Server manager (add/edit/connect/disconnect/reconnect) | Implemented but incompletely tested | Servers panel; Electron UI manual |
+| Channel manager (join/part, auto-join, topic/key) | Implemented and tested | Mock topic/join+key; Channel dialog |
+| Nick list ops/voice | Implemented and tested | NAMES prefixes + MODE updates |
+| WHOIS / PM / kick / ban (when op) | Implemented and tested | Mock WHOIS/KICK/MODE; UI gates kick/ban |
+| Message formatting (IRC codes, no HTML) | Implemented and tested | `irc-format` unit tests |
+| Command history | Implemented but incompletely tested | Up/Down in composer |
+| Nickname completion | Implemented but incompletely tested | Tab + `getCompletions` API |
+| Unread indicators | Implemented and tested | Manager unread mock test |
+| Search + logging (no secrets) | Implemented and tested | Redaction + search unit tests |
 
 ## Phase 4 — Advanced IRC
 
 | Feature | Status |
 |---------|--------|
 | Broader IRCv3 | Planned |
-| CTCP | Planned |
+| CTCP (beyond ACTION display) | Partially implemented |
 | DCC | Planned (scaffold only — labeled unfinished) |
 | Ignore / notifications / moderation | Planned |
 

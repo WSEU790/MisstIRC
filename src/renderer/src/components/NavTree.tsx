@@ -24,15 +24,18 @@ export function NavTree({ connections, activeKey, onSelect }: Props): React.JSX.
               </div>
               {conn.buffers.map((buf) => {
                 const key = `${conn.id}:${buf.name}`
-                const label = buf.name === '*' ? '(server)' : buf.name
+                const label =
+                  buf.name === '*' ? '(server)' : buf.type === 'query' ? buf.name : buf.name
+                const unread = buf.unread ?? 0
                 return (
                   <button
                     key={key}
                     type="button"
-                    className={`nav-item${activeKey === key ? ' active' : ''}`}
+                    className={`nav-item${activeKey === key ? ' active' : ''}${unread ? ' unread' : ''}`}
                     onClick={() => onSelect(conn.id, buf.name)}
                   >
-                    {label}
+                    <span>{label}</span>
+                    {unread > 0 ? <span className="badge">{unread > 99 ? '99+' : unread}</span> : null}
                   </button>
                 )
               })}

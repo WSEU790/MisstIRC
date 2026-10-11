@@ -4,12 +4,18 @@ import * as tls from 'node:tls'
 import { randomUUID } from 'node:crypto'
 import type { ConnectionState, NetworkConfig } from '@shared/types'
 import { formatIrcLine, parseIrcLine, type ParsedIrcMessage } from './parser'
+import {
+  applyNickMode,
+  isOpLike,
+  parseChannelEntry,
+  parsePrefixedNick,
+  sortPrefixes
+} from './prefixes'
 
 export interface IrcConnectionOptions {
   network: NetworkConfig
   password?: string
   saslPassword?: string
-  /** Override for tests */
   createSocket?: (opts: {
     host: string
     port: number
@@ -18,10 +24,28 @@ export interface IrcConnectionOptions {
   }) => net.Socket
 }
 
+export interface ChannelNick {
+  nick: string
+  modes: string
+}
+
 export interface ChannelState {
   name: string
   topic?: string
-  nicks: Map<string, string>
+  key?: string
+  nicks: Map<string, ChannelNick>
+}
+
+export interface WhoisPending {
+  nick: string
+  lines: string[]
+  user?: string
+  host?: string
+  realname?: string
+  server?: string
+  channels?: string
+  idle?: string
+  account?: string
 }
 
 type ConnectionEvents = {
@@ -31,6 +55,7 @@ type ConnectionEvents = {
   registered: []
   error: [Error]
   close: []
+  whois: [WhoisPending]
 }
 
 export class IrcConnection extends EventEmitter {
@@ -39,6 +64,7 @@ export class IrcConnection extends EventEmitter {
   state: ConnectionState = 'disconnected'
   nick: string
   channels = new Map<string, ChannelState>()
+  queries = new Set<string>()
   lastError?: string
 
   private socket: net.Socket | null = null
@@ -56,6 +82,7 @@ export class IrcConnection extends EventEmitter {
   private pingTimer: NodeJS.Timeout | null = null
   private readonly maxLineLength = 8192
   private readonly wantedCaps = ['sasl', 'server-time', 'message-tags', 'multi-prefix']
+  private whoisPending = new Map<string, WhoisPending>()
 
   constructor(options: IrcConnectionOptions) {
     super()
@@ -65,7 +92,6 @@ export class IrcConnection extends EventEmitter {
     this.password = options.password
     this.saslPassword = options.saslPassword
     this.createSocket = options.createSocket
-    // Prevent EventEmitter from throwing on emit('error') with no listeners.
     this.on('error', () => undefined)
   }
 
@@ -89,6 +115,7 @@ export class IrcConnection extends EventEmitter {
     this.availableCaps.clear()
     this.saslInProgress = false
     this.buffer = ''
+    this.channels.clear()
 
     try {
       const socket = this.createSocket
@@ -102,7 +129,6 @@ export class IrcConnection extends EventEmitter {
 
       this.socket = socket
       socket.setEncoding('utf8')
-      // Attach error listener first so abrupt resets are not unhandled.
       socket.on('error', (err) => {
         this.lastError = err.message
         this.emit('error', err)
@@ -184,11 +210,39 @@ export class IrcConnection extends EventEmitter {
     this.sendRaw(formatIrcLine('NOTICE', [target, text]))
   }
 
+  topic(channel: string, text?: string): void {
+    if (text === undefined) this.sendRaw(formatIrcLine('TOPIC', [channel]))
+    else this.sendRaw(formatIrcLine('TOPIC', [channel, text]))
+  }
+
+  kick(channel: string, nick: string, reason?: string): void {
+    this.sendRaw(formatIrcLine('KICK', reason ? [channel, nick, reason] : [channel, nick]))
+  }
+
+  mode(target: string, modes: string, ...args: string[]): void {
+    this.sendRaw(formatIrcLine('MODE', [target, modes, ...args]))
+  }
+
+  whois(nick: string): void {
+    const key = nick.toLowerCase()
+    this.whoisPending.set(key, { nick, lines: [] })
+    this.sendRaw(formatIrcLine('WHOIS', [nick]))
+  }
+
+  selfIsOp(channel: string): boolean {
+    const ch = this.channels.get(channel.toLowerCase())
+    if (!ch) return false
+    const self = ch.nicks.get(this.nick.toLowerCase())
+    return self ? isOpLike(self.modes) : false
+  }
+
   private openSocket(): Promise<net.Socket> {
     const { host, port, tls: useTls, rejectUnauthorized } = this.network
     return new Promise((resolve, reject) => {
       if (useTls) {
-        const socket = tls.connect({ host, port, rejectUnauthorized, servername: host }, () => resolve(socket))
+        const socket = tls.connect({ host, port, rejectUnauthorized, servername: host }, () =>
+          resolve(socket)
+        )
         socket.once('error', reject)
       } else {
         const socket = net.connect({ host, port }, () => resolve(socket))
@@ -231,6 +285,21 @@ export class IrcConnection extends EventEmitter {
     this.dispatch(msg)
   }
 
+  private ensureChannel(name: string): ChannelState {
+    const key = name.toLowerCase()
+    let ch = this.channels.get(key)
+    if (!ch) {
+      ch = { name, nicks: new Map() }
+      this.channels.set(key, ch)
+    }
+    return ch
+  }
+
+  private setNick(channel: string, nick: string, modes = ''): void {
+    const ch = this.ensureChannel(channel)
+    ch.nicks.set(nick.toLowerCase(), { nick, modes: sortPrefixes(modes) })
+  }
+
   private dispatch(msg: ParsedIrcMessage): void {
     switch (msg.command) {
       case 'PING':
@@ -248,70 +317,107 @@ export class IrcConnection extends EventEmitter {
         this.reconnectAttempt = 0
         this.setState('connected')
         this.emit('registered')
-        for (const channel of this.network.channels) {
-          if (channel) this.join(channel)
+        for (const entry of this.network.channels) {
+          const { channel, key } = parseChannelEntry(entry)
+          if (channel) this.join(channel, key)
         }
         break
       case 'NICK': {
         const newNick = msg.params[0]
-        if (msg.nick === this.nick && newNick) this.nick = newNick
+        if (!newNick || !msg.nick) break
+        const oldKey = msg.nick.toLowerCase()
+        if (oldKey === this.nick.toLowerCase()) this.nick = newNick
+        for (const ch of this.channels.values()) {
+          const entry = ch.nicks.get(oldKey)
+          if (entry) {
+            ch.nicks.delete(oldKey)
+            ch.nicks.set(newNick.toLowerCase(), { nick: newNick, modes: entry.modes })
+          }
+        }
+        if (this.queries.has(oldKey)) {
+          this.queries.delete(oldKey)
+          this.queries.add(newNick.toLowerCase())
+        }
         break
       }
       case 'JOIN': {
         const channel = msg.params[0]
         if (!channel || !msg.nick) break
-        let ch = this.channels.get(channel.toLowerCase())
-        if (!ch) {
-          ch = { name: channel, nicks: new Map() }
-          this.channels.set(channel.toLowerCase(), ch)
-        }
-        ch.nicks.set(msg.nick.toLowerCase(), msg.nick)
+        this.setNick(channel, msg.nick, msg.nick.toLowerCase() === this.nick.toLowerCase() ? '' : '')
         break
       }
-      case 'PART':
-      case 'QUIT': {
-        const channel = msg.command === 'PART' ? msg.params[0] : undefined
-        if (msg.command === 'PART' && channel) {
-          const ch = this.channels.get(channel.toLowerCase())
-          if (ch && msg.nick) ch.nicks.delete(msg.nick.toLowerCase())
-          if (msg.nick === this.nick) this.channels.delete(channel.toLowerCase())
-        } else if (msg.command === 'QUIT' && msg.nick) {
-          for (const ch of this.channels.values()) {
-            ch.nicks.delete(msg.nick.toLowerCase())
-          }
+      case 'PART': {
+        const channel = msg.params[0]
+        if (!channel || !msg.nick) break
+        const ch = this.channels.get(channel.toLowerCase())
+        ch?.nicks.delete(msg.nick.toLowerCase())
+        if (msg.nick.toLowerCase() === this.nick.toLowerCase()) {
+          this.channels.delete(channel.toLowerCase())
         }
+        break
+      }
+      case 'QUIT': {
+        if (!msg.nick) break
+        for (const ch of this.channels.values()) {
+          ch.nicks.delete(msg.nick.toLowerCase())
+        }
+        break
+      }
+      case 'KICK': {
+        const channel = msg.params[0]
+        const victim = msg.params[1]
+        if (!channel || !victim) break
+        const ch = this.channels.get(channel.toLowerCase())
+        ch?.nicks.delete(victim.toLowerCase())
+        if (victim.toLowerCase() === this.nick.toLowerCase()) {
+          this.channels.delete(channel.toLowerCase())
+        }
+        break
+      }
+      case 'TOPIC': {
+        const channel = msg.params[0]
+        const topic = msg.params[1]
+        if (channel) this.ensureChannel(channel).topic = topic
+        break
+      }
+      case 'MODE': {
+        this.handleMode(msg)
         break
       }
       case '353': {
-        // RPL_NAMREPLY: <nick> <type> <channel> :<nicks>
         const channel = msg.params[2]
         const names = msg.params[3] ?? ''
         if (!channel) break
-        let ch = this.channels.get(channel.toLowerCase())
-        if (!ch) {
-          ch = { name: channel, nicks: new Map() }
-          this.channels.set(channel.toLowerCase(), ch)
-        }
         for (const token of names.split(/\s+/).filter(Boolean)) {
-          const modes = token.match(/^[@%+~&]/)?.[0] ?? ''
-          const nick = token.slice(modes.length)
-          ch.nicks.set(nick.toLowerCase(), nick)
+          const { modes, nick } = parsePrefixedNick(token)
+          if (nick) this.setNick(channel, nick, modes)
         }
         break
       }
       case '332': {
         const channel = msg.params[1]
         const topic = msg.params[2]
-        if (channel) {
-          let ch = this.channels.get(channel.toLowerCase())
-          if (!ch) {
-            ch = { name: channel, nicks: new Map() }
-            this.channels.set(channel.toLowerCase(), ch)
-          }
-          ch.topic = topic
+        if (channel) this.ensureChannel(channel).topic = topic
+        break
+      }
+      case '324': {
+        // RPL_CHANNELMODEIS <nick> <channel> <mode> <mode params>
+        const channel = msg.params[1]
+        if (!channel) break
+        const modes = msg.params[2] ?? ''
+        if (modes.includes('k') && msg.params[3]) {
+          this.ensureChannel(channel).key = msg.params[3]
         }
         break
       }
+      case '311':
+      case '312':
+      case '317':
+      case '319':
+      case '330':
+      case '318':
+        this.handleWhois(msg)
+        break
       case '900':
       case '903':
         if (this.saslInProgress) {
@@ -330,6 +436,69 @@ export class IrcConnection extends EventEmitter {
         break
       default:
         break
+    }
+  }
+
+  private handleMode(msg: ParsedIrcMessage): void {
+    const target = msg.params[0]
+    const modeStr = msg.params[1]
+    if (!target || !modeStr || !target.startsWith('#') && !target.startsWith('&')) {
+      // channel modes only for nick list updates
+      if (!target?.startsWith('#') && !target?.startsWith('&')) return
+    }
+    if (!target || !modeStr) return
+    const ch = this.ensureChannel(target)
+    let adding = true
+    let argIdx = 2
+    for (const chMode of modeStr) {
+      if (chMode === '+') {
+        adding = true
+        continue
+      }
+      if (chMode === '-') {
+        adding = false
+        continue
+      }
+      if ('ovhqa'.includes(chMode)) {
+        const nick = msg.params[argIdx++]
+        if (!nick) continue
+        const entry = ch.nicks.get(nick.toLowerCase()) ?? { nick, modes: '' }
+        entry.modes = applyNickMode(entry.modes, adding, chMode)
+        ch.nicks.set(nick.toLowerCase(), entry)
+      } else if (chMode === 'k') {
+        const key = msg.params[argIdx++]
+        if (adding && key) ch.key = key
+        if (!adding) ch.key = undefined
+      } else if ('blI'.includes(chMode)) {
+        argIdx += 1
+      }
+    }
+  }
+
+  private handleWhois(msg: ParsedIrcMessage): void {
+    const nick = msg.params[1] ?? ''
+    const key = nick.toLowerCase()
+    let pending = this.whoisPending.get(key)
+    if (!pending) {
+      pending = { nick, lines: [] }
+      this.whoisPending.set(key, pending)
+    }
+    pending.lines.push(msg.raw)
+    if (msg.command === '311') {
+      pending.user = msg.params[2]
+      pending.host = msg.params[3]
+      pending.realname = msg.params[5] ?? msg.params[msg.params.length - 1]
+    } else if (msg.command === '312') {
+      pending.server = msg.params[2]
+    } else if (msg.command === '319') {
+      pending.channels = msg.params[2]
+    } else if (msg.command === '317') {
+      pending.idle = msg.params[2]
+    } else if (msg.command === '330') {
+      pending.account = msg.params[2]
+    } else if (msg.command === '318') {
+      this.whoisPending.delete(key)
+      this.emit('whois', pending)
     }
   }
 

@@ -5,7 +5,11 @@
 | Suite | Path | Covers |
 |-------|------|--------|
 | Parser | `tests/parser.test.ts` | Tags, PRIVMSG, numerics, serializer |
-| Protocol integration | `tests/irc-integration.test.ts` | Register, JOIN, PRIVMSG echo, SASL PLAIN vs `MockIrcServer` |
+| Protocol integration | `tests/irc-integration.test.ts` | Register, JOIN, PRIVMSG echo, SASL PLAIN, reconnect |
+| Phase 3 flows | `tests/phase3-integration.test.ts` | Ops/voice NAMES, WHOIS, topic/kick, unread |
+| Formatting | `tests/irc-format.test.ts` | IRC codes → safe spans |
+| Logging | `tests/logging.test.ts` | Secret redaction + search |
+| Prefixes | `tests/prefixes.test.ts` | Mode/prefix helpers, channel keys |
 | Persistence | `tests/database.test.ts` | SQLite networks, encrypted secret store |
 
 Run: `npm test`
@@ -20,13 +24,14 @@ Mock server: `src/mock-irc/server.ts` (TCP, CAP, optional SASL, channel echo).
 - Script permission/limit fixtures (Phase 5+)
 - Compatibility fixtures only for features we claim (Phase 6)
 
-## Manual verification checklist (Phase 1–2)
+## Manual verification checklist (Phase 1–3)
 
-1. `npm run dev` launches MisstIRC window with brand visible.
-2. Connect dialog opens; cancel works.
-3. Against mock or a real network: register, `/join`, send PRIVMSG, see nick list update.
-4. Disconnect clears/stops the session.
-5. Status bar shows unfinished: scripting, DCC, installer.
-6. Saved network reappears after restart (SQLite).
+1. `npm run dev` launches MisstIRC with brand visible.
+2. Servers panel: save network, connect, reconnect, disconnect.
+3. Channels: join with key, part, set topic (double-click header).
+4. Nick list shows `@`/`+`; right-click Whois/Query; Kick/Ban only when op.
+5. Tab completes nicks; Up/Down recalls input history; unread badges clear on focus.
+6. Search finds prior messages; password/SASL lines never appear in log files.
+7. Status bar still lists unfinished: scripting, DCC, installer.
 
 Document any manual-only checks in `FEATURE_STATUS.md` as “Implemented but incompletely tested”.

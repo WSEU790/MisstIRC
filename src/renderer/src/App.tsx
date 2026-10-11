@@ -2,19 +2,23 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   AppStateSnapshot,
   IrcMessageView,
-  NetworkConfig
+  LogSearchHit,
+  NetworkConfig,
+  WhoisInfo
 } from '../../shared/types'
-import { ConnectDialog } from './components/ConnectDialog'
+import { ChannelDialog } from './components/ChannelDialog'
 import { Conversation } from './components/Conversation'
 import { NavTree } from './components/NavTree'
 import { NickList } from './components/NickList'
+import { SearchPanel } from './components/SearchPanel'
+import { ServerManager } from './components/ServerManager'
 import { StatusBar } from './components/StatusBar'
 import { Toolbar } from './components/Toolbar'
 
 const emptyState: AppStateSnapshot = {
   connections: [],
   activeBufferKey: null,
-  settings: { theme: 'misstirc-dark', showStatusBar: true, fontSize: 14 },
+  settings: { theme: 'misstirc-dark', showStatusBar: true, fontSize: 14, loggingEnabled: true },
   unfinished: []
 }
 
@@ -28,8 +32,11 @@ function parseBufferKey(key: string | null): { connectionId: string; name: strin
 export function App(): React.JSX.Element {
   const [state, setState] = useState<AppStateSnapshot>(emptyState)
   const [messages, setMessages] = useState<IrcMessageView[]>([])
-  const [showConnect, setShowConnect] = useState(false)
+  const [showServers, setShowServers] = useState(false)
+  const [showChannels, setShowChannels] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [whois, setWhois] = useState<WhoisInfo | null>(null)
   const [networks, setNetworks] = useState<NetworkConfig[]>([])
   const apiReady = typeof window !== 'undefined' && Boolean(window.misstirc)
   const messagesRef = useRef<IrcMessageView[]>([])
@@ -57,6 +64,7 @@ export function App(): React.JSX.Element {
           setMessages(messagesRef.current)
         }
         if (event.type === 'error') setError(event.payload.message)
+        if (event.type === 'whois') setWhois(event.payload)
       })
     })()
 
@@ -65,31 +73,33 @@ export function App(): React.JSX.Element {
 
   const active = parseBufferKey(state.activeBufferKey)
   const activeConnection = state.connections.find((c) => c.id === active?.connectionId)
-  const activeBuffer = activeConnection?.buffers.find((b) => b.name === active?.name)
+  const activeBuffer = activeConnection?.buffers.find(
+    (b) => b.name === active?.name || b.name.toLowerCase() === active?.name.toLowerCase()
+  )
 
   const visibleMessages = useMemo(() => {
     if (!active) return []
-    return messages.filter(
-      (m) =>
-        m.connectionId === active.connectionId &&
-        (m.target === active.name || (active.name === '*' && m.target === '*'))
-    )
+    return messages.filter((m) => {
+      if (m.connectionId !== active.connectionId) return false
+      if (active.name === '*') return m.target === '*'
+      return m.target.toLowerCase() === active.name.toLowerCase()
+    })
   }, [messages, active])
+
+  async function refreshNetworks(): Promise<void> {
+    setNetworks(await window.misstirc.listNetworks())
+  }
 
   async function handleConnect(network: NetworkConfig, password?: string): Promise<void> {
     setError(null)
-    try {
-      await window.misstirc.connect({ network, password, saslPassword: password })
-      setNetworks(await window.misstirc.listNetworks())
-      setShowConnect(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
+    await window.misstirc.connect({ network, password, saslPassword: password })
+    await refreshNetworks()
   }
 
-  async function handleDisconnect(): Promise<void> {
-    if (!activeConnection) return
-    await window.misstirc.disconnect(activeConnection.id)
+  async function handleDisconnect(connectionId?: string): Promise<void> {
+    const id = connectionId ?? activeConnection?.id
+    if (!id) return
+    await window.misstirc.disconnect(id)
   }
 
   async function handleSend(text: string): Promise<void> {
@@ -118,9 +128,12 @@ export function App(): React.JSX.Element {
   return (
     <div className="app">
       <Toolbar
-        onConnect={() => setShowConnect(true)}
+        onServers={() => setShowServers(true)}
+        onChannels={() => setShowChannels(true)}
+        onSearch={() => setShowSearch(true)}
         onDisconnect={() => void handleDisconnect()}
         canDisconnect={Boolean(activeConnection)}
+        canChannels={Boolean(activeConnection && activeConnection.state === 'connected')}
       />
 
       {error ? (
@@ -132,7 +145,17 @@ export function App(): React.JSX.Element {
         </div>
       ) : null}
 
-      <div className="workspace" style={error ? { gridRow: 'span 1' } : undefined}>
+      {whois ? (
+        <div className="error-banner whois-banner" role="status">
+          WHOIS <strong>{whois.nick}</strong>: {whois.realname} ({whois.user}@{whois.host}){' '}
+          {whois.channels} {whois.account ? `account=${whois.account}` : ''}
+          <button className="btn btn-ghost" style={{ marginLeft: 8 }} onClick={() => setWhois(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      <div className="workspace">
         <NavTree
           connections={state.connections}
           activeKey={state.activeBufferKey}
@@ -142,10 +165,14 @@ export function App(): React.JSX.Element {
         {activeConnection && active ? (
           <Conversation
             title={active.name === '*' ? activeConnection.network.name : active.name}
-            topic={activeBuffer?.topic}
+            topic={activeBuffer?.type === 'channel' ? activeBuffer.topic ?? '' : undefined}
             nick={activeConnection.nick}
             messages={visibleMessages}
+            nicks={(activeBuffer?.nicks ?? []).map((n) => n.nick)}
+            connectionId={active.connectionId}
+            buffer={active.name}
             onSend={(t) => void handleSend(t)}
+            onTopic={(t) => void handleSend(`/topic ${t}`)}
             disabled={
               activeConnection.state !== 'connected' && activeConnection.state !== 'registering'
             }
@@ -157,14 +184,22 @@ export function App(): React.JSX.Element {
               <p>
                 Connect to an IRC network to chat. Real TCP/TLS networking — not a simulated inbox.
               </p>
-              <button className="btn btn-primary" onClick={() => setShowConnect(true)}>
-                Connect…
+              <button className="btn btn-primary" onClick={() => setShowServers(true)}>
+                Servers…
               </button>
             </div>
           </section>
         )}
 
-        <NickList nicks={activeBuffer?.nicks ?? []} />
+        <NickList
+          nicks={activeBuffer?.nicks ?? []}
+          selfIsOp={activeBuffer?.selfIsOp}
+          channel={activeBuffer?.type === 'channel' ? activeBuffer.name : undefined}
+          onWhois={(n) => void handleSend(`/whois ${n}`)}
+          onQuery={(n) => void handleSend(`/query ${n}`)}
+          onKick={(n) => void handleSend(`/kick ${n}`)}
+          onBan={(n) => void handleSend(`/ban ${n}`)}
+        />
       </div>
 
       <StatusBar
@@ -173,11 +208,55 @@ export function App(): React.JSX.Element {
         show={state.settings.showStatusBar}
       />
 
-      {showConnect ? (
-        <ConnectDialog
-          savedNetworks={networks}
-          onCancel={() => setShowConnect(false)}
-          onConnect={(n, p) => void handleConnect(n, p)}
+      {showServers ? (
+        <ServerManager
+          networks={networks}
+          connections={state.connections}
+          onClose={() => {
+            setShowServers(false)
+            void refreshNetworks()
+          }}
+          onSave={async (n, p) => {
+            await window.misstirc.saveNetwork(n, p)
+            await refreshNetworks()
+          }}
+          onDelete={async (id) => {
+            await window.misstirc.deleteNetwork(id)
+            await refreshNetworks()
+          }}
+          onConnect={handleConnect}
+          onDisconnect={handleDisconnect}
+          onReconnect={async (id) => {
+            await window.misstirc.reconnect(id)
+          }}
+        />
+      ) : null}
+
+      {showChannels && activeConnection ? (
+        <ChannelDialog
+          currentChannel={active?.name}
+          onCancel={() => setShowChannels(false)}
+          onJoin={(channel, key) => {
+            void handleSend(key ? `/join ${channel} ${key}` : `/join ${channel}`)
+            setShowChannels(false)
+          }}
+          onPart={(channel) => {
+            void handleSend(`/part ${channel}`)
+            setShowChannels(false)
+          }}
+        />
+      ) : null}
+
+      {showSearch ? (
+        <SearchPanel
+          onClose={() => setShowSearch(false)}
+          onSearch={(q) => window.misstirc.searchLogs(q)}
+          onOpenHit={(hit: LogSearchHit) => {
+            if (hit.connectionId) {
+              void selectBuffer(hit.connectionId, hit.target)
+            }
+            setShowSearch(false)
+          }}
         />
       ) : null}
     </div>

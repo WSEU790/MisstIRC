@@ -1,10 +1,20 @@
 interface Props {
-  onConnect: () => void
+  onServers: () => void
+  onChannels: () => void
+  onSearch: () => void
   onDisconnect: () => void
   canDisconnect: boolean
+  canChannels: boolean
 }
 
-export function Toolbar({ onConnect, onDisconnect, canDisconnect }: Props): React.JSX.Element {
+export function Toolbar({
+  onServers,
+  onChannels,
+  onSearch,
+  onDisconnect,
+  canDisconnect,
+  canChannels
+}: Props): React.JSX.Element {
   return (
     <header className="toolbar">
       <div className="brand" aria-label="MisstIRC">
@@ -14,8 +24,14 @@ export function Toolbar({ onConnect, onDisconnect, canDisconnect }: Props): Reac
         </div>
       </div>
       <div className="toolbar-actions">
-        <button type="button" className="btn btn-primary" onClick={onConnect}>
-          Connect
+        <button type="button" className="btn btn-primary" onClick={onServers}>
+          Servers
+        </button>
+        <button type="button" className="btn" onClick={onChannels} disabled={!canChannels}>
+          Channels
+        </button>
+        <button type="button" className="btn" onClick={onSearch}>
+          Search
         </button>
         <button
           type="button"

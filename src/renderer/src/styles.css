@@ -562,6 +562,221 @@ textarea {
   font-size: 0.85rem;
 }
 
+.whois-banner {
+  background: rgba(138, 180, 232, 0.12);
+  border-color: rgba(138, 180, 232, 0.4);
+  color: #cfe0f5;
+}
+
+.nav-item {
+  display: flex !important;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-item.unread {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #1a1206;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.modal-wide {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.server-manager {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 14px;
+  min-height: 320px;
+}
+
+.server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-right: 1px solid var(--border);
+  padding-right: 10px;
+}
+
+.server-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+}
+
+.server-list li button {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+}
+
+.server-list li button.active,
+.server-list li button:hover {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.nick-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+  width: 100%;
+  text-align: left;
+  border-radius: 3px;
+}
+
+.nick-btn:hover {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.nick-btn .modes {
+  color: var(--accent);
+  margin-right: 2px;
+}
+
+.context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.context-menu {
+  position: fixed;
+  min-width: 140px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 4px;
+  display: grid;
+}
+
+.context-menu button {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.context-menu button:hover {
+  background: var(--accent-dim);
+}
+
+.context-hint {
+  padding: 6px 10px;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+
+.search-results {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+}
+
+.search-results ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-results li button {
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 140px 120px 80px 1fr;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.search-results li button:hover {
+  background: var(--accent-dim);
+}
+
+.fmt-b {
+  font-weight: 700;
+}
+.fmt-i {
+  font-style: italic;
+}
+.fmt-u {
+  text-decoration: underline;
+}
+.fmt-s {
+  text-decoration: line-through;
+}
+.fmt-r {
+  filter: invert(1);
+}
+.msg-link {
+  border: none;
+  background: none;
+  color: var(--notice);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+.action {
+  font-style: italic;
+  color: var(--accent-hot);
+}
+
+.fg-0 { color: #ffffff; } .fg-1 { color: #000000; }
+.fg-2 { color: #00007f; } .fg-3 { color: #009300; }
+.fg-4 { color: #ff0000; } .fg-5 { color: #7f0000; }
+.fg-6 { color: #9c009c; } .fg-7 { color: #fc7f00; }
+.fg-8 { color: #ffff00; } .fg-9 { color: #00fc00; }
+.fg-10 { color: #009393; } .fg-11 { color: #00ffff; }
+.fg-12 { color: #0000fc; } .fg-13 { color: #ff00ff; }
+.fg-14 { color: #7f7f7f; } .fg-15 { color: #d2d2d2; }
+
+.msg.kick .body,
+.msg.topic .body,
+.msg.mode .body {
+  color: var(--system);
+}
+
 @media (max-width: 900px) {
   .workspace {
     grid-template-columns: 160px 1fr;

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, session } from 'electron'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ConnectionManager } from '../core/manager'
+import { ChatLogger } from '../services/logging'
 import { AppDatabase } from '../storage/database'
 import {
   createSecretStore,
@@ -12,13 +13,16 @@ import {
 import type {
   AppStateSnapshot,
   ConnectRequest,
+  LogSearchHit,
   MainToRendererEvent,
-  NetworkConfig
+  NetworkConfig,
+  WhoisInfo
 } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let db: AppDatabase
 let secrets: SecretStore
+let logger: ChatLogger
 const manager = new ConnectionManager()
 
 function userDataDbPath(): string {
@@ -61,6 +65,11 @@ function send(event: MainToRendererEvent): void {
   mainWindow?.webContents.send('misstirc:event', event)
 }
 
+async function resolvePassword(networkId: string, provided?: string): Promise<string | undefined> {
+  if (provided) return provided
+  return (await secrets.get(SECRET_SERVICE, secretAccountId(networkId))) ?? undefined
+}
+
 function registerIpc(): void {
   ipcMain.handle('misstirc:getState', (): AppStateSnapshot => manager.getSnapshot())
 
@@ -89,12 +98,8 @@ function registerIpc(): void {
   ipcMain.handle(
     'misstirc:connect',
     async (_e, request: ConnectRequest): Promise<{ connectionId: string }> => {
-      let password = request.password
-      let saslPassword = request.saslPassword
-      if (!password) {
-        password = (await secrets.get(SECRET_SERVICE, secretAccountId(request.network.id))) ?? undefined
-      }
-      if (!saslPassword && password) saslPassword = password
+      const password = await resolvePassword(request.network.id, request.password)
+      const saslPassword = request.saslPassword ?? password
 
       db.saveNetwork({
         ...request.network,
@@ -117,6 +122,17 @@ function registerIpc(): void {
     manager.disconnect(connectionId)
   })
 
+  ipcMain.handle(
+    'misstirc:reconnect',
+    async (_e, connectionId: string): Promise<{ connectionId: string }> => {
+      const snap = manager.listConnections().find((c) => c.id === connectionId)
+      if (!snap) throw new Error('Unknown connection')
+      const password = await resolvePassword(snap.network.id)
+      const id = await manager.reconnect(connectionId, password, password)
+      return { connectionId: id }
+    }
+  )
+
   ipcMain.handle('misstirc:sendRaw', (_e, connectionId: string, line: string): void => {
     manager.sendRaw(connectionId, line)
   })
@@ -131,6 +147,17 @@ function registerIpc(): void {
   ipcMain.handle('misstirc:setActiveBuffer', (_e, key: string | null): void => {
     manager.setActiveBuffer(key)
   })
+
+  ipcMain.handle(
+    'misstirc:searchLogs',
+    (_e, query: string, limit?: number): LogSearchHit[] => manager.searchLogs(query, limit)
+  )
+
+  ipcMain.handle(
+    'misstirc:getCompletions',
+    (_e, connectionId: string, buffer: string, prefix: string): string[] =>
+      manager.getCompletions(connectionId, buffer, prefix)
+  )
 }
 
 function wireManager(): void {
@@ -138,10 +165,10 @@ function wireManager(): void {
   manager.on('message', (payload) => send({ type: 'message', payload }))
   manager.on('connection', (payload) => send({ type: 'connection', payload }))
   manager.on('error', (payload: { message: string }) => send({ type: 'error', payload }))
+  manager.on('whois', (payload: WhoisInfo) => send({ type: 'whois', payload }))
 }
 
 app.whenReady().then(async () => {
-  // Basic CSP for renderer
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -155,7 +182,9 @@ app.whenReady().then(async () => {
 
   db = new AppDatabase(userDataDbPath())
   secrets = await createSecretStore(app.getPath('userData'))
+  logger = new ChatLogger(join(app.getPath('userData'), 'logs'))
   manager.settings = db.getSettings()
+  manager.setLogger(logger)
 
   registerIpc()
   wireManager()

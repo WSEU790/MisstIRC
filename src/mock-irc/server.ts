@@ -179,12 +179,19 @@ export class MockIrcServer extends EventEmitter {
         break
       case 'JOIN': {
         const channel = msg.params[0]
+        const key = msg.params[1]
         if (!channel || !client.registered) break
         client.channels.add(channel.toLowerCase())
         this.send(client, `:${client.nick}!${client.user}@localhost JOIN :${channel}`)
-        this.send(client, formatIrcLine('353', [client.nick, '=', channel, `@${client.nick} alice bob`]))
+        this.send(
+          client,
+          formatIrcLine('353', [client.nick, '=', channel, `@${client.nick} +alice bob`])
+        )
         this.send(client, formatIrcLine('366', [client.nick, channel, 'End of /NAMES list']))
         this.send(client, formatIrcLine('332', [client.nick, channel, 'Welcome to the mock channel']))
+        if (key) {
+          this.send(client, formatIrcLine('324', [client.nick, channel, '+ntk', key]))
+        }
         break
       }
       case 'PART': {
@@ -194,21 +201,59 @@ export class MockIrcServer extends EventEmitter {
         this.send(client, `:${client.nick}!${client.user}@localhost PART ${channel}`)
         break
       }
+      case 'TOPIC': {
+        const channel = msg.params[0]
+        const topic = msg.params[1]
+        if (!channel) break
+        if (topic !== undefined) {
+          this.send(client, `:${client.nick}!${client.user}@localhost TOPIC ${channel} :${topic}`)
+        } else {
+          this.send(client, formatIrcLine('332', [client.nick, channel, 'Welcome to the mock channel']))
+        }
+        break
+      }
+      case 'WHOIS': {
+        const nick = msg.params[0] ?? 'alice'
+        this.send(
+          client,
+          formatIrcLine('311', [client.nick, nick, nick.toLowerCase(), 'localhost', '*', `${nick} user`])
+        )
+        this.send(client, formatIrcLine('319', [client.nick, nick, `@#lobby +#misstirc`]))
+        this.send(client, formatIrcLine('312', [client.nick, nick, 'mock.misstirc.local', 'MockIRC']))
+        this.send(client, formatIrcLine('317', [client.nick, nick, '42', 'seconds idle']))
+        this.send(client, formatIrcLine('318', [client.nick, nick, 'End of /WHOIS list']))
+        break
+      }
+      case 'KICK': {
+        const channel = msg.params[0]
+        const victim = msg.params[1]
+        const reason = msg.params[2] ?? 'kicked'
+        if (!channel || !victim) break
+        this.send(
+          client,
+          `:${client.nick}!${client.user}@localhost KICK ${channel} ${victim} :${reason}`
+        )
+        break
+      }
+      case 'MODE': {
+        const target = msg.params[0]
+        const modes = msg.params[1]
+        const arg = msg.params[2]
+        if (!target || !modes) break
+        this.send(
+          client,
+          `:${client.nick}!${client.user}@localhost MODE ${target} ${modes}${arg ? ` ${arg}` : ''}`
+        )
+        break
+      }
       case 'PRIVMSG': {
         const target = msg.params[0]
         const text = msg.params[1] ?? ''
         if (!target) break
-        // Echo from a fake peer for channel messages
         if (target.startsWith('#')) {
-          this.send(
-            client,
-            `:alice!alice@localhost PRIVMSG ${target} :echo:${text}`
-          )
+          this.send(client, `:alice!alice@localhost PRIVMSG ${target} :echo:${text}`)
         } else {
-          this.send(
-            client,
-            `:${target}!user@localhost PRIVMSG ${client.nick} :pm-ack:${text}`
-          )
+          this.send(client, `:${target}!user@localhost PRIVMSG ${client.nick} :pm-ack:${text}`)
         }
         break
       }

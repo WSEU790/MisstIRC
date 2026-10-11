@@ -7,7 +7,8 @@ import { MIGRATIONS } from './migrations'
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'misstirc-dark',
   showStatusBar: true,
-  fontSize: 14
+  fontSize: 14,
+  loggingEnabled: true
 }
 
 export class AppDatabase {
