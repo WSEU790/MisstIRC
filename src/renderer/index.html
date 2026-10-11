@@ -2,10 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
-    />
+    <!-- Production CSP is enforced from the main process; omit meta CSP so Vite HMR can inject in dev. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MisstIRC</title>
   </head>

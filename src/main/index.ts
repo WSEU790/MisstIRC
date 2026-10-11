@@ -335,12 +335,15 @@ function wireManager(): void {
 app.whenReady().then(async () => {
   installCrashHooks(app.getPath('userData'))
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    // Dev (Vite HMR) needs unsafe-inline + ws; production stays locked down.
+    const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
+    const csp = isDev
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:*"
+      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
-        ]
+        'Content-Security-Policy': [csp]
       }
     })
   })
