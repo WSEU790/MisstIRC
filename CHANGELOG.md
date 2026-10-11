@@ -10,6 +10,11 @@
 - `/ignore -list` and `/ignore -r`; channel-scoped ignore edge-case tests
 - Compatibility fixtures: notice-echo, connect-banner, ignore-note
 
+### Fixed
+
+- **Duplicate chat lines** under React Strict Mode: IPC `onEvent` now subscribes synchronously so cleanup cannot leak a second listener (smoke showed 4× lines = 2 listeners × local echo + self-echo)
+- Suppress inbound PRIVMSG/NOTICE that are server echoes of our own nick (already local-echoed)
+
 ### Limits (honest)
 
 - Outbound SEND binds local/direct peers only — NAT not claimed

@@ -106,4 +106,37 @@ describe('Phase 3 daily IRC flows', () => {
     ).toBe(0)
     manager.disconnect(conn.id)
   })
+
+  it('one send yields one UI line; server self-echo is suppressed', async () => {
+    const conn = await connected()
+    const manager = new ConnectionManager()
+    manager.attach(conn)
+    manager.setActiveBuffer(`${conn.id}:#lobby`)
+
+    const lines: string[] = []
+    manager.on('message', (m: { text: string; nick?: string; kind: string }) => {
+      if (m.text === 'once-only' || m.text === 'echo:once-only') {
+        lines.push(`${m.kind}:${m.nick ?? ''}:${m.text}`)
+      }
+    })
+
+    manager.sendInput(conn.id, '#lobby', 'once-only')
+    await new Promise((r) => setTimeout(r, 80))
+
+    // Local outbound echo once; MockIrcServer replies as alice with echo: prefix (not self)
+    expect(lines.filter((l) => l === 'privmsg:OpUser:once-only')).toHaveLength(1)
+    expect(lines.some((l) => l === 'privmsg:alice:echo:once-only')).toBe(true)
+
+    // Inject a server echo of our own PRIVMSG — must not add another UI line
+    const before = lines.filter((l) => l === 'privmsg:OpUser:once-only').length
+    const { parseIrcLine } = await import('../src/core/parser')
+    conn.emit(
+      'message',
+      parseIrcLine(`:OpUser!opuser@localhost PRIVMSG #lobby :once-only`)
+    )
+    await new Promise((r) => setTimeout(r, 20))
+    expect(lines.filter((l) => l === 'privmsg:OpUser:once-only')).toHaveLength(before)
+
+    manager.disconnect(conn.id)
+  })
 })

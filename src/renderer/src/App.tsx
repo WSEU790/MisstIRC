@@ -77,46 +77,45 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     if (!apiReady) return
-    let unsub = (): void => undefined
+    // Subscribe synchronously so React Strict Mode cleanup always removes the listener.
+    // (Async subscribe-after-await left a leaked listener → every line rendered twice.)
+    const unsub = window.misstirc.onEvent((event) => {
+      if (event.type === 'state') setState(event.payload)
+      if (event.type === 'connection') {
+        setState((prev) => ({
+          ...prev,
+          connections: prev.connections.some((c) => c.id === event.payload.id)
+            ? prev.connections.map((c) => (c.id === event.payload.id ? event.payload : c))
+            : [...prev.connections, event.payload]
+        }))
+      }
+      if (event.type === 'message') {
+        messagesRef.current = [...messagesRef.current, event.payload].slice(-RENDERER_MESSAGE_MAX)
+        setMessages(messagesRef.current)
+      }
+      if (event.type === 'error') setError(event.payload.message)
+      if (event.type === 'whois') setWhois(event.payload)
+      if (event.type === 'dcc') {
+        setState((prev) => {
+          const rest = prev.dccOffers.filter((o) => o.id !== event.payload.id)
+          return { ...prev, dccOffers: [event.payload, ...rest] }
+        })
+      }
+      if (event.type === 'scripts') {
+        setState((prev) => ({ ...prev, scripts: event.payload }))
+      }
+      if (event.type === 'notify') {
+        setError(`Notify: ${event.payload.title} — ${event.payload.body}`)
+      }
+    })
 
     void (async () => {
       const snap = await window.misstirc.getState()
       setState(snap)
       setNetworks(await window.misstirc.listNetworks())
-      unsub = window.misstirc.onEvent((event) => {
-        if (event.type === 'state') setState(event.payload)
-        if (event.type === 'connection') {
-          setState((prev) => ({
-            ...prev,
-            connections: prev.connections.some((c) => c.id === event.payload.id)
-              ? prev.connections.map((c) => (c.id === event.payload.id ? event.payload : c))
-              : [...prev.connections, event.payload]
-          }))
-        }
-        if (event.type === 'message') {
-          messagesRef.current = [...messagesRef.current, event.payload].slice(
-            -RENDERER_MESSAGE_MAX
-          )
-          setMessages(messagesRef.current)
-        }
-        if (event.type === 'error') setError(event.payload.message)
-        if (event.type === 'whois') setWhois(event.payload)
-        if (event.type === 'dcc') {
-          setState((prev) => {
-            const rest = prev.dccOffers.filter((o) => o.id !== event.payload.id)
-            return { ...prev, dccOffers: [event.payload, ...rest] }
-          })
-        }
-        if (event.type === 'scripts') {
-          setState((prev) => ({ ...prev, scripts: event.payload }))
-        }
-        if (event.type === 'notify') {
-          setError(`Notify: ${event.payload.title} — ${event.payload.body}`)
-        }
-      })
     })()
 
-    return () => unsub()
+    return unsub
   }, [apiReady])
 
   useEffect(() => {

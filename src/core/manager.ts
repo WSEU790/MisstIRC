@@ -756,6 +756,15 @@ export class ConnectionManager extends EventEmitter {
 
   private onIrcMessage(conn: IrcConnection, msg: ParsedIrcMessage): void {
     this.scriptTargetConnectionId = conn.id
+    // Servers (and some mocks) may echo our own PRIVMSG/NOTICE back. We already
+    // local-echo outbound traffic via viewFromOutbound — skip the duplicate UI line.
+    if (
+      (msg.command === 'PRIVMSG' || msg.command === 'NOTICE') &&
+      msg.nick &&
+      msg.nick.toLowerCase() === conn.nick.toLowerCase()
+    ) {
+      return
+    }
     const view = this.toView(conn, msg)
     if (view) {
       if (view.ignored) {

@@ -92,7 +92,13 @@ class SmokeMockIrc extends EventEmitter {
         const sp = rest.indexOf(' :')
         const target = sp === -1 ? rest.split(' ')[0] : rest.slice(0, sp)
         const text = sp === -1 ? '' : rest.slice(sp + 2)
-        send(`:${nick}!u@localhost PRIVMSG ${target} :${text}`)
+        // Realistic: do NOT echo the sender's own PRIVMSG back (client local-echoes).
+        // Optionally ack from another nick so the channel feels alive.
+        if (target.startsWith('#') || target.startsWith('&')) {
+          /* no self-echo */
+        } else {
+          send(`:${target}!user@localhost PRIVMSG ${nick} :pm-ack:${text}`)
+        }
         return
       }
       if (upper.startsWith('QUIT')) {
