@@ -46,11 +46,14 @@ Manual long-session soak is **Implemented but incompletely tested** until a reco
 
 ```bash
 npm run pack:dir          # Linux x64 unpacked app → release/linux-unpacked/
-npm run pack:win:dir      # Windows x64 unpacked (Wine/`wine64` may be required on Linux)
+npm run pack:win:dir      # Windows x64 unpacked (Wine may be required on Linux for NSIS)
+npm run pack:win          # Unsigned NSIS — runs ensure:win-native + verify:win-package
 ```
 
-**Do not** publish `pack:win` NSIS output until the **Windows smoke checklist** below is green (§26 rule 11).  
-**Do not** ship a signed installer until that checklist is met and signing credentials are configured outside the repo.
+`pack:win` / `pack:win:dir` call `ensure:win-native` (Electron **win32-x64** `better-sqlite3` prebuild) and `verify:win-package` (refuse ELF `.node` in `release/win-unpacked`). Cross-packing from Linux without that step shipped a Linux native module in `v0.10.0-test.1`.
+
+**Do not** treat unsigned NSIS as a production release.  
+**Do not** ship a **signed** installer until the **Windows smoke checklist** below is green (§26 rule 11).
 
 ## Windows smoke checklist (required before installer ship)
 

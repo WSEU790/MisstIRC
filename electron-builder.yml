@@ -28,8 +28,10 @@ asarUnpack:
   - '**/node_modules/better-sqlite3/**/*'
   - '**/*.node'
 
-# Rebuild native modules for the Electron ABI at pack time
-npmRebuild: true
+# Native rebuild for Windows is done explicitly by scripts/ensure-win-native.mjs
+# before pack:win (win32-x64 Electron ABI + PE check). Leaving npmRebuild on can
+# race and re-pack a host Linux ELF better_sqlite3.node (see v0.10.0-test.1).
+npmRebuild: false
 nodeGypRebuild: false
 buildDependenciesFromSource: false
 

@@ -16,8 +16,10 @@
     "rebuild:electron": "electron-builder install-app-deps",
     "postinstall": "npm rebuild better-sqlite3",
     "pack:dir": "npm run build && electron-builder --linux --x64 --dir",
-    "pack:win:dir": "npm run build && electron-builder --win --x64 --dir -c.forceCodeSigning=false",
-    "pack:win": "npm run build && electron-builder --win --x64 -c.forceCodeSigning=false"
+    "ensure:win-native": "node scripts/ensure-win-native.mjs",
+    "verify:win-package": "node scripts/verify-win-package.mjs",
+    "pack:win:dir": "npm run build && npm run ensure:win-native && electron-builder --win --x64 --dir -c.forceCodeSigning=false -c.npmRebuild=false && npm run verify:win-package",
+    "pack:win": "npm run build && npm run ensure:win-native && electron-builder --win --x64 -c.forceCodeSigning=false -c.npmRebuild=false && npm run verify:win-package"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",

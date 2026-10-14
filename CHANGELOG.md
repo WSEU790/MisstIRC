@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0-test.2 — Windows pack: native module fix (prerelease)
+
+### Fixed
+
+- **`pack:win` from Linux** now fetches the Electron **win32-x64** `better-sqlite3` prebuild and verifies the packaged `.node` is PE (not ELF) before emitting NSIS. `v0.10.0-test.1` incorrectly shipped a Linux ELF addon and failed to launch on Windows.
+
 ## 0.10.0 — Popups in UI, virtual chat, sound, $iif/$calc, query flood
 
 ### Added
