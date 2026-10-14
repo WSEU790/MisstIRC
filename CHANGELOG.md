@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.0-test.3 — Default Libera.Chat server + Windows test installer
+
+### Added
+
+- First-launch server list seeds **Libera.Chat** (`irc.libera.chat:6697` TLS, cert verification on). No password/SASL, no auto-connect, no auto-join channels.
+
+### Fixed (from test.2)
+
+- Windows `pack:win` still verifies PE `better_sqlite3.node` (refuses ELF).
+
 ## 0.10.0-test.2 — Windows pack: native module fix (prerelease)
 
 ### Fixed

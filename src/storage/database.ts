@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { AppSettings, NetworkConfig } from '@shared/types'
+import { defaultSeedNetworks } from '../shared/default-networks'
 import { normalizeAppSettings } from '../shared/defaults'
 import { MIGRATIONS } from './migrations'
 
@@ -44,6 +45,21 @@ export class AppDatabase {
     this.db = new Database(filePath)
     this.db.pragma('journal_mode = WAL')
     this.migrate()
+    this.seedDefaultNetworksIfEmpty()
+  }
+
+  /**
+   * First-launch only: preload a reachable public network so Servers is not empty.
+   * Never auto-connects; never writes passwords. Skips if the user already has networks.
+   */
+  seedDefaultNetworksIfEmpty(): void {
+    const count = (
+      this.db.prepare('SELECT COUNT(*) AS c FROM networks').get() as { c: number }
+    ).c
+    if (count > 0) return
+    for (const network of defaultSeedNetworks()) {
+      this.saveNetwork(network)
+    }
   }
 
   close(): void {

@@ -54,8 +54,8 @@ See `RELEASE.md` / `TESTING.md`. Installer distribution is gated on the Windows 
 
 ## Connect
 
-1. Click **Connect**
-2. Enter host/port (or use `127.0.0.1` against your own mock/server)
+1. Open **Servers** — a fresh profile includes **Libera.Chat** (`irc.libera.chat:6697` TLS) ready to connect (not auto-connected)
+2. Set your nick if needed, then Connect — or add another host/port (e.g. `127.0.0.1` against a local mock)
 3. Optional password is stored via the secret store (encrypted file fallback on non-Windows; Credential Manager path reserved for Windows)
 
 Slash commands: `/join`, `/part`, `/msg`, `/notice`, `/nick`, `/me`, `/quit`, plus raw passthrough.
