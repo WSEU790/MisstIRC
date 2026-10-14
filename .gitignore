@@ -1,0 +1,15 @@
+node_modules
+dist
+out
+release
+*.log
+.DS_Store
+coverage
+*.local
+.env
+.env.*
+userData
+*.db
+*.tsbuildinfo
+.vscode/*
+!.vscode/extensions.json

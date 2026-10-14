@@ -1,0 +1,79 @@
+# MisstIRC packaging
+# Acceptance rule 11: do NOT distribute a signed/public installer until
+# Windows smoke in TESTING.md / RELEASE.md is green.
+# Prefer `npm run pack:win:dir` for an unpacked dry-run before `pack:win`.
+
+appId: com.misstirc.app
+productName: MisstIRC
+copyright: Copyright © MisstIRC contributors
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - from: out
+    to: out
+    filter:
+      - '**/*'
+  - package.json
+
+extraMetadata:
+  main: out/main/index.js
+
+asar: true
+# Native addon must load from outside asar
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**/*'
+  - '**/*.node'
+
+# Native rebuild for Windows is done explicitly by scripts/ensure-win-native.mjs
+# before pack:win (win32-x64 Electron ABI + PE check). Leaving npmRebuild on can
+# race and re-pack a host Linux ELF better_sqlite3.node (see v0.10.0-test.1).
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+
+# Do not attempt code signing in CI/cloud agents
+forceCodeSigning: false
+
+electronLanguages:
+  - en-US
+
+win:
+  # Target Windows x64 only for the first ship path
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: dir
+      arch:
+        - x64
+  # Optional: add build/icon.ico for branded installers
+  # icon: build/icon.ico
+  # Signing intentionally unset until smoke criteria are met
+  signAndEditExecutable: false
+  verifyUpdateCodeSignature: false
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MisstIRC
+  uninstallDisplayName: MisstIRC
+  deleteAppDataOnUninstall: false
+  differentialPackage: false
+
+linux:
+  target:
+    - target: dir
+      arch:
+        - x64
+  category: Network
+
+# Never auto-publish
+publish: null
